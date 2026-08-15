@@ -21,7 +21,7 @@ export default async function CoachDashboardPage() {
       profile.team_id
         ? supabase
             .from("teams")
-            .select("name")
+            .select("name, invite_code")
             .eq("id", profile.team_id)
             .single()
         : Promise.resolve({ data: null }),
@@ -54,6 +54,21 @@ export default async function CoachDashboardPage() {
         </div>
         <LogoutButton />
       </div>
+
+      {team?.invite_code && (
+        <section className="flex items-center justify-between rounded border border-zinc-200 px-4 py-3 dark:border-white/[.145]">
+          <div>
+            <h2 className="text-sm font-medium">Team invite code</h2>
+            <p className="text-xs text-zinc-500">
+              Share this with your players so they can join from signup or
+              their dashboard.
+            </p>
+          </div>
+          <code className="rounded bg-black/[.06] px-3 py-1.5 font-mono text-sm tracking-wider dark:bg-white/[.08]">
+            {team.invite_code}
+          </code>
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Roster</h2>

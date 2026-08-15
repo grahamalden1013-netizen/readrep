@@ -33,6 +33,7 @@ export async function signup(formData: FormData) {
       data: {
         full_name: formData.get("full_name") as string,
         role,
+        invite_code: formData.get("invite_code") as string,
       },
     },
   });

@@ -13,6 +13,19 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.verifyOtp({ type, token_hash });
 
     if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const inviteCode = user?.user_metadata?.invite_code as
+        | string
+        | undefined;
+
+      if (inviteCode) {
+        // Best-effort: an invalid/missing code just leaves the player
+        // without a team, which they can retry from their dashboard.
+        await supabase.rpc("join_team_by_code", { code: inviteCode });
+      }
+
       redirect("/dashboard");
     }
   }

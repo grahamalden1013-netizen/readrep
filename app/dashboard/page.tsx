@@ -2,8 +2,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/profile";
 import { LogoutButton } from "@/components/logout-button";
+import { joinTeam } from "./actions";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const profile = await getCurrentProfile();
 
   if (!profile) {
@@ -40,6 +46,32 @@ export default async function DashboardPage() {
         </div>
         <LogoutButton />
       </div>
+
+      {!profile.team_id && (
+        <section className="flex flex-col gap-3 rounded border border-dashed border-zinc-300 px-4 py-4 dark:border-white/[.145]">
+          <h2 className="text-sm font-medium">Join your team</h2>
+          {error && (
+            <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          <form action={joinTeam} className="flex gap-2">
+            <input
+              type="text"
+              name="code"
+              placeholder="Invite code"
+              required
+              className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm uppercase"
+            />
+            <button
+              type="submit"
+              className="rounded bg-foreground px-4 py-2 text-sm text-background font-medium"
+            >
+              Join
+            </button>
+          </form>
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Your film sessions</h2>

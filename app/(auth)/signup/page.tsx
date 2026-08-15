@@ -44,6 +44,18 @@ export default async function SignupPage({
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
+          Team invite code{" "}
+          <span className="text-zinc-500">
+            (players only &mdash; optional, ask your coach)
+          </span>
+          <input
+            type="text"
+            name="invite_code"
+            className="rounded border border-zinc-300 px-3 py-2 uppercase"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
           Email
           <input
             type="email"
