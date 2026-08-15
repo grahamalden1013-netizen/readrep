@@ -21,16 +21,27 @@ export async function login(formData: FormData) {
 export async function signup(formData: FormData) {
   const supabase = await createClient();
 
+  const role = formData.get("role") as string;
+  if (role !== "player" && role !== "coach") {
+    redirect(`/signup?error=${encodeURIComponent("Select whether you're a player or a coach.")}`);
+  }
+
   const { error } = await supabase.auth.signUp({
     email: formData.get("email") as string,
     password: formData.get("password") as string,
+    options: {
+      data: {
+        full_name: formData.get("full_name") as string,
+        role,
+      },
+    },
   });
 
   if (error) {
     redirect(`/signup?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  redirect("/check-email");
 }
 
 export async function logout() {

@@ -19,6 +19,30 @@ export default async function SignupPage({
           </p>
         )}
 
+        <fieldset className="flex flex-col gap-2 text-sm">
+          <legend className="mb-1">I&apos;m a...</legend>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="role" value="player" required />
+              Player
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="role" value="coach" required />
+              Coach
+            </label>
+          </div>
+        </fieldset>
+
+        <label className="flex flex-col gap-1 text-sm">
+          Full name
+          <input
+            type="text"
+            name="full_name"
+            required
+            className="rounded border border-zinc-300 px-3 py-2"
+          />
+        </label>
+
         <label className="flex flex-col gap-1 text-sm">
           Email
           <input
@@ -35,7 +59,7 @@ export default async function SignupPage({
             type="password"
             name="password"
             required
-            minLength={6}
+            minLength={8}
             className="rounded border border-zinc-300 px-3 py-2"
           />
         </label>
