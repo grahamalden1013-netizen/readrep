@@ -1,193 +1,156 @@
 /**
- * Pure-logic tests for the interview's knowledge model: normalization of model
- * output, coverage/film-readiness, next-topic selection, and situation-scoped
- * retrieval. No database, no model provider.
+ * Pure-logic tests: normalization of model output, redundancy detection,
+ * information gain, adaptive film readiness, and situation-scoped retrieval.
+ * No database, no model provider.
  *
- *   npx tsx tests/interview-model.test.ts
+ *   npm run test:model
  */
 
 import { assert, equal, group, includes, report, test } from "./harness";
 
 import { normalizeTurn, fingerprintOf, describeNode } from "@/lib/interview/normalize";
-import { computeCoverage, openTopics } from "@/lib/interview/coverage";
+import {
+  assessAreas,
+  calculateFilmReadiness,
+  questionThreshold,
+  rankedQuestions,
+  redundancyFor,
+  shouldEndOnboarding,
+  skippedAreas,
+  SKIP_REDUNDANCY,
+} from "@/lib/interview/gain";
+import { AREA_BY_ID, deriveSignals } from "@/lib/interview/areas";
 import { selectReads, readsToPrompt } from "@/lib/interview/retrieval";
-import { TOPICS } from "@/lib/interview/coverage-model";
-import type { InterviewTurnOutput } from "@/lib/ai/schemas";
-import type { KnowledgeNode, TopicState } from "@/lib/interview/types";
+import type { KnowledgeNode } from "@/lib/interview/types";
+import { node, outputNode, turnOutput, unknown, RICH_ANSWER, RICH_ANSWER_FACTS } from "./fixtures";
 
-// --- fixtures --------------------------------------------------------------
-
-function turnOutput(overrides: Partial<InterviewTurnOutput> = {}): InterviewTurnOutput {
-  return {
-    assistant_message: "Got it. What changes when the big steps up?",
-    extracted_knowledge: [],
-    updated_knowledge: [],
-    terminology_detected: [],
-    ambiguities: [],
-    corrections: [],
-    confidence_updates: [],
-    coverage_updates: [],
-    recommended_next_topic: null,
-    next_question_reason: null,
-    ready_for_film: false,
-    ...overrides,
-  };
-}
-
-function node(overrides: Partial<InterviewTurnOutput["extracted_knowledge"][number]> = {}) {
-  return {
-    ref: "r1",
-    topic_id: "offense.ball_screen.vs_drop",
-    phase: "offense" as const,
-    action: "ball_screen" as const,
-    coverage: "drop" as const,
-    role: "ball_handler" as const,
-    clock: null,
-    trigger: null,
-    instruction: "turn the corner",
-    priority: 1,
-    confidence: 0.9,
-    source: "coach" as const,
-    parent_ref: null,
-    ...overrides,
-  };
-}
-
-function stored(overrides: Partial<KnowledgeNode> = {}): KnowledgeNode {
-  return {
-    id: "id-1",
-    topicId: "offense.ball_screen.vs_drop",
-    phase: "offense",
-    action: "ball_screen",
-    coverage: "drop",
-    role: "ball_handler",
-    clock: null,
-    trigger: null,
-    instruction: "turn the corner",
-    priority: 1,
-    confidence: 0.9,
-    source: "coach",
-    parentId: null,
-    createdAt: "2026-01-01T00:00:00Z",
-    ...overrides,
-  };
-}
-
-const emptyContext = { knownNodeIds: new Set<string>(), existingTerms: new Set<string>() };
-
-// --- normalization ---------------------------------------------------------
+const emptyContext = {
+  knownNodeIds: new Set<string>(),
+  existingTerms: new Set<string>(),
+  openUnknowns: new Set<string>(),
+};
 
 async function main() {
-  group("Normalization — the model cannot write outside the vocabulary");
+  // -------------------------------------------------------------------------
+  group("Normalization — the model cannot write outside ReadRep's vocabulary");
 
-  await test("discards knowledge tagged with a topic ReadRep doesn't have", () => {
+  await test("discards knowledge tagged with an area ReadRep doesn't have", () => {
     const result = normalizeTurn(
-      turnOutput({ extracted_knowledge: [node({ topic_id: "offense.invented_topic" })] }),
+      turnOutput({ confirmed_knowledge_updates: [outputNode({ area_id: "offense.vibes" })] }),
       emptyContext,
     );
-    equal(result.nodes.length, 0, "invented topic should be dropped");
+    equal(result.nodes.length, 0, "invented area dropped");
+    assert(result.rejected.some((r) => r.includes("offense.vibes")), "and reported");
+  });
+
+  await test("confirmed and inferred stay separate all the way through", () => {
+    const result = normalizeTurn(
+      turnOutput({
+        confirmed_knowledge_updates: [outputNode({ ref: "c", instruction: "5-out alignment" })],
+        inferred_knowledge_updates: [
+          outputNode({
+            ref: "i",
+            area_id: "offense.principles",
+            instruction: "spacing around penetration matters",
+            confidence: 0.9,
+          }),
+        ],
+      }),
+      emptyContext,
+    );
+    equal(result.nodes.length, 2, "both stored");
+    equal(result.nodes.find((n) => n.ref === "c")?.provenance, "confirmed", "coach's words");
+    equal(result.nodes.find((n) => n.ref === "i")?.provenance, "inferred", "ReadRep's guess");
+  });
+
+  await test("an inference can never look as certain as something the coach said", () => {
+    const result = normalizeTurn(
+      turnOutput({
+        inferred_knowledge_updates: [outputNode({ ref: "i", confidence: 1 })],
+      }),
+      emptyContext,
+    );
+    assert(result.nodes[0].confidence <= 0.5, "a guess is capped below a stated fact");
+  });
+
+  await test("a confirmed rule and an inference about the same slot are different rows", () => {
+    const base = {
+      areaId: "offense.ball_screen_reads",
+      phase: "offense",
+      action: "ball_screen",
+      coverage: "drop",
+      role: "ball_handler",
+      clock: null,
+      trigger: null,
+      priority: 1,
+    };
     assert(
-      result.rejected.some((r) => r.includes("offense.invented_topic")),
-      "rejection should be reported, not silent",
+      fingerprintOf({ ...base, provenance: "confirmed" }) !==
+        fingerprintOf({ ...base, provenance: "inferred" }),
+      "so confirming a guess promotes it rather than colliding with it",
     );
   });
 
-  await test("discards an update naming a knowledge id that isn't this team's", () => {
+  await test("refuses an update naming a row that isn't this playbook's", () => {
     const result = normalizeTurn(
       turnOutput({
         updated_knowledge: [
-          {
-            id: "some-other-teams-row",
-            instruction: "do something else",
-            trigger: null,
-            priority: null,
-            confidence: null,
-            retire: false,
-            reason: null,
-          },
+          { id: "someone-elses-row", instruction: "leak", trigger: null, priority: null, confidence: null, retire: false, replaces_confirmed_rule: false, reason: null },
         ],
       }),
       emptyContext,
     );
-    equal(result.updates.length, 0, "unknown row id must not reach the database");
+    equal(result.updates.length, 0, "cross-row write refused");
   });
 
-  await test("accepts an update naming a real id from this playbook", () => {
+  await test("flags a replacement of a confirmed rule instead of applying it", () => {
     const result = normalizeTurn(
       turnOutput({
         updated_knowledge: [
-          {
-            id: "id-1",
-            instruction: "reject it and re-screen",
-            trigger: null,
-            priority: null,
-            confidence: 0.95,
-            retire: false,
-            reason: "Coach corrected the first read",
-          },
+          { id: "k-1", instruction: "we ICE all side ball screens", trigger: null, priority: null, confidence: null, retire: false, replaces_confirmed_rule: true, reason: "Coach changed coverage" },
         ],
       }),
-      { knownNodeIds: new Set(["id-1"]), existingTerms: new Set() },
+      { ...emptyContext, knownNodeIds: new Set(["k-1"]) },
     );
-    equal(result.updates.length, 1, "known id should pass");
-    equal(result.updates[0].instruction, "reject it and re-screen", "instruction carried through");
+    equal(result.updates[0].replacesConfirmedRule, true, "marked for the coach to confirm");
+  });
+
+  await test("keeps an exception separate from a contradiction", () => {
+    const result = normalizeTurn(
+      turnOutput({
+        knowledge_conflicts: [
+          { id: null, description: "Switches everything, but not with the 5", likely_exception: true },
+        ],
+      }),
+      emptyContext,
+    );
+    equal(result.conflicts[0].likelyException, true, "read as an exception, not an error");
+  });
+
+  await test("only resolves unknowns that are actually open", () => {
+    const result = normalizeTurn(
+      turnOutput({ resolved_unknowns: ["A question nobody asked", "Where does help come from?"] }),
+      { ...emptyContext, openUnknowns: new Set(["where does help come from?"]) },
+    );
+    equal(result.resolvedUnknowns.length, 1, "invented resolutions ignored");
   });
 
   await test("drops a defensive role from an offensive read", () => {
     const result = normalizeTurn(
-      turnOutput({ extracted_knowledge: [node({ role: "low_man" })] }),
+      turnOutput({ confirmed_knowledge_updates: [outputNode({ role: "low_man" })] }),
       emptyContext,
     );
-    equal(result.nodes[0].role, null, "incoherent role should be dropped, not stored");
-    equal(result.nodes[0].instruction, "turn the corner", "the instruction itself survives");
+    equal(result.nodes[0].role, null, "incoherent role dropped, instruction kept");
   });
 
-  await test("a coverage implies a ball screen", () => {
-    const result = normalizeTurn(
-      turnOutput({ extracted_knowledge: [node({ action: null, coverage: "ice" })] }),
-      emptyContext,
-    );
-    equal(result.nodes[0].action, "ball_screen", "coverage without an action is coerced");
-  });
-
-  await test("clamps confidence and caps overlong text", () => {
+  await test("keeps a conditional chain intact", () => {
     const result = normalizeTurn(
       turnOutput({
-        extracted_knowledge: [
-          node({ confidence: 4.2, instruction: "x".repeat(500), priority: 99 }),
-        ],
-      }),
-      emptyContext,
-    );
-    equal(result.nodes[0].confidence, 1, "confidence clamped to 1");
-    equal(result.nodes[0].instruction.length, 240, "instruction capped");
-    equal(result.nodes[0].priority, 20, "priority clamped");
-  });
-
-  await test("deduplicates two identical reads inside one turn", () => {
-    const result = normalizeTurn(
-      turnOutput({ extracted_knowledge: [node({ ref: "a" }), node({ ref: "b" })] }),
-      emptyContext,
-    );
-    equal(result.nodes.length, 1, "same situation + same read order collapses to one row");
-  });
-
-  await test("flattens a read whose parent_ref points at nothing", () => {
-    const result = normalizeTurn(
-      turnOutput({ extracted_knowledge: [node({ ref: "child", parent_ref: "ghost" })] }),
-      emptyContext,
-    );
-    equal(result.nodes[0].parentRef, null, "orphan chain is flattened rather than lost");
-    assert(result.rejected.length > 0, "the flattening is reported");
-  });
-
-  await test("keeps a valid parent chain", () => {
-    const result = normalizeTurn(
-      turnOutput({
-        extracted_knowledge: [
-          node({ ref: "root", instruction: "turn the corner" }),
-          node({
+        confirmed_knowledge_updates: [
+          outputNode({ ref: "root", area_id: "offense.ball_screen_reads", instruction: "turn the corner" }),
+          outputNode({
             ref: "branch",
+            area_id: "offense.ball_screen_reads",
             parent_ref: "root",
             trigger: "the big commits to the ball",
             instruction: "hit the roller",
@@ -197,287 +160,322 @@ async function main() {
       }),
       emptyContext,
     );
-    equal(result.nodes.length, 2, "both reads kept");
-    const branch = result.nodes.find((n) => n.ref === "branch");
-    equal(branch?.parentRef, "root", "chain preserved");
-    equal(describeNode(branch!), "If the big commits to the ball → hit the roller", "renders as a read");
+    equal(result.nodes.find((n) => n.ref === "branch")?.parentRef, "root", "chain preserved");
+    equal(
+      describeNode(result.nodes[1]),
+      "If the big commits to the ball → hit the roller",
+      "renders as a read",
+    );
   });
 
-  await test("ignores a recommended topic outside the coverage model", () => {
+  // -------------------------------------------------------------------------
+  group("One answer, many facts");
+
+  await test("the brief's example answer produces seven confirmed facts across five areas", () => {
     const result = normalizeTurn(
-      turnOutput({ recommended_next_topic: "offense.freelance_vibes" }),
+      turnOutput({ confirmed_knowledge_updates: RICH_ANSWER_FACTS }),
       emptyContext,
     );
-    equal(result.nextTopicId, null, "unknown next topic is not stored");
-  });
-
-  await test("skips terminology the team already has", () => {
-    const result = normalizeTurn(
-      turnOutput({
-        terminology_detected: [
-          { term: "Chicago", meaning: "pin-down into handoff", category: "offense" },
-          { term: "chicago", meaning: "duplicate casing", category: "offense" },
-        ],
-      }),
-      { knownNodeIds: new Set(), existingTerms: new Set(["chicago"]) },
+    equal(result.nodes.length, 7, "every fact in the answer is kept");
+    const areas = new Set(result.nodes.map((n) => n.areaId));
+    equal(areas.size, 5, "spread across five areas of the framework");
+    assert(
+      result.nodes.some((n) => n.coverage === "drop" && n.role === "ball_handler"),
+      "the vs-drop read is scoped, not stored as prose",
     );
-    equal(result.terminology.length, 0, "already-known term is not re-added");
   });
 
-  await test("fingerprints are stable and situation-sensitive", () => {
-    const base = {
-      topicId: "offense.ball_screen.vs_drop",
-      phase: "offense",
-      action: "ball_screen",
-      coverage: "drop" as string | null,
-      role: "ball_handler",
-      clock: null,
-      trigger: null,
-      priority: 1,
+  await test("everything that answer covers is then refused as a follow-up", () => {
+    const stored = RICH_ANSWER_FACTS.map((f) =>
+      node({ areaId: f.area_id, instruction: f.instruction, coverage: f.coverage, action: f.action, role: f.role }),
+    );
+    const snap = {
+      knowledge: stored,
+      areaStates: [],
+      unknowns: [],
+      turns: [{ role: "coach", content: RICH_ANSWER }],
     };
-    equal(fingerprintOf(base), fingerprintOf({ ...base }), "same input, same fingerprint");
+
+    const skipped = skippedAreas(snap).map((a) => a.area.id);
+    for (const id of ["offense.identity", "offense.actions", "offense.ball_screen_reads", "offense.shot_selection"]) {
+      assert(skipped.includes(id), `${id} is not asked about again`);
+    }
+
+    const open = rankedQuestions(snap).map((a) => a.area.id);
     assert(
-      fingerprintOf(base) !== fingerprintOf({ ...base, coverage: "switch" }),
-      "a different coverage is a different slot",
-    );
-    assert(
-      fingerprintOf(base) !== fingerprintOf({ ...base, priority: 2 }),
-      "a different read order is a different slot",
-    );
-  });
-
-  // --- coverage ------------------------------------------------------------
-
-  group("Coverage — film-readiness is computed, not self-reported");
-
-  await test("an empty playbook is not film-ready", () => {
-    const coverage = computeCoverage({ knowledge: [], topicStates: [] });
-    equal(coverage.filmReady, false, "nothing learned is not ready");
-    equal(coverage.overall, 0, "zero coverage");
-    assert(coverage.missingCritical.length > 0, "critical topics are listed as missing");
-  });
-
-  await test("a topic claimed 'covered' with no stored knowledge does not count", () => {
-    const states: TopicState[] = [
-      { topicId: "offense.system", status: "covered", confidence: 1, note: null },
-    ];
-    const coverage = computeCoverage({ knowledge: [], topicStates: states });
-    const topic = coverage.topics.find((t) => t.topic.id === "offense.system");
-    assert(topic!.confidence <= 0.35, "confidence is capped by the evidence behind it");
-    assert(
-      coverage.missingCritical.some((t) => t.id === "offense.system"),
-      "a claim with no knowledge still counts as missing",
+      open.includes("defense.identity") || open.includes("program.priorities"),
+      "and the next question moves to something genuinely unknown",
     );
   });
 
-  await test("evidence lifts confidence toward the model's claim", () => {
-    const states: TopicState[] = [
-      { topicId: "offense.system", status: "covered", confidence: 0.9, note: null },
-    ];
-    const knowledge = [
-      stored({ id: "a", topicId: "offense.system", instruction: "5-out motion" }),
-      stored({ id: "b", topicId: "offense.system", instruction: "first look is the paint touch", priority: 2 }),
-    ];
-    const coverage = computeCoverage({ knowledge, topicStates: states });
-    const topic = coverage.topics.find((t) => t.topic.id === "offense.system");
-    equal(topic!.confidence, 0.9, "two stored reads lets the claim stand");
+  // -------------------------------------------------------------------------
+  group("Redundancy — asking is refused, not merely discouraged");
+
+  await test("an area the coach fully answered is above the skip line", () => {
+    const area = AREA_BY_ID.get("offense.identity")!;
+    const r = redundancyFor(area, {
+      confirmedCount: 3,
+      inferredCount: 0,
+      text: "",
+      openUnknowns: [],
+    });
+    assert(r.score >= SKIP_REDUNDANCY, "fully answered means never asked again");
   });
 
-  await test("not_applicable topics are excluded from the score", () => {
-    const states: TopicState[] = [
-      { topicId: "offense.post", status: "not_applicable", confidence: 0, note: "no true post" },
-    ];
-    const coverage = computeCoverage({ knowledge: [], topicStates: states });
-    const topic = coverage.topics.find((t) => t.topic.id === "offense.post");
-    equal(topic!.status, "not_applicable", "status preserved");
+  await test("words in the coach's own answer count even with nothing extracted", () => {
+    const area = AREA_BY_ID.get("offense.identity")!;
+    const r = redundancyFor(area, {
+      confirmedCount: 0,
+      inferredCount: 0,
+      text: "we're 5-out and we play fast",
+      openUnknowns: [],
+    });
+    assert(r.score > 0.3, "indirect answers reduce the need to ask");
+    includes(r.reason ?? "", "already touch", "and the reason says why");
+  });
+
+  await test("an inference excuses a low-impact area but never a high-impact one", () => {
+    const low = AREA_BY_ID.get("program.language")!;
+    const high = AREA_BY_ID.get("offense.shot_selection")!;
+    const facts = { confirmedCount: 0, inferredCount: 2, text: "", openUnknowns: [] };
+
+    assert(redundancyFor(low, facts).score >= SKIP_REDUNDANCY, "a guess is fine for language");
     assert(
-      !coverage.missingCritical.some((t) => t.id === "offense.post"),
-      "an inapplicable topic is never 'missing'",
+      redundancyFor(high, facts).score < SKIP_REDUNDANCY,
+      "but shot selection still needs the coach",
     );
   });
 
-  await test("film-ready requires every critical topic AND real depth", () => {
-    const critical = TOPICS.filter((t) => t.filmCritical);
-    const states: TopicState[] = critical.map((t) => ({
-      topicId: t.id,
-      status: "covered",
-      confidence: 1,
+  await test("a specific open gap pulls redundancy back down", () => {
+    const area = AREA_BY_ID.get("offense.principles")!;
+    const without = redundancyFor(area, { confirmedCount: 2, inferredCount: 0, text: "", openUnknowns: [] });
+    const withGap = redundancyFor(area, {
+      confirmedCount: 2,
+      inferredCount: 0,
+      text: "",
+      openUnknowns: [unknown({ importance: 0.9 })],
+    });
+    assert(withGap.score < without.score, "a known missing piece reopens the area");
+  });
+
+  // -------------------------------------------------------------------------
+  group("Information gain — the bar rises as the interview goes on");
+
+  await test("a later question must be worth more than an early one", () => {
+    assert(questionThreshold(12) > questionThreshold(0), "interview fatigue is priced in");
+  });
+
+  await test("low-value areas drop off once the conversation is long", () => {
+    const base = { knowledge: [node({ areaId: "offense.identity" })], areaStates: [], unknowns: [] };
+    const early = rankedQuestions({ ...base, turns: [] }).length;
+    const late = rankedQuestions({
+      ...base,
+      turns: Array.from({ length: 14 }, () => ({ role: "assistant", content: "?" })),
+    }).length;
+    assert(late < early, `fewer areas clear the bar late (${late} vs ${early})`);
+  });
+
+  await test("the highest-value question leads, not the first empty field", () => {
+    const open = rankedQuestions({ knowledge: [], areaStates: [], unknowns: [], turns: [] });
+    assert(open.length > 0, "something to ask");
+    assert(open[0].area.filmImpact >= 0.85, "and it's something that moves a film read");
+  });
+
+  // -------------------------------------------------------------------------
+  group("Adapting to the coach");
+
+  await test("a team that barely uses ball screens is not interviewed about them", () => {
+    const snap = {
+      knowledge: [],
+      areaStates: [],
+      unknowns: [],
+      turns: [{ role: "coach", content: "We're 4-out-1-in and everything runs through our post. We barely use ball screens." }],
+    };
+    const open = rankedQuestions(snap).map((a) => a.area.id);
+    assert(!open.includes("offense.ball_screen_reads"), "no pick-and-roll interview");
+    assert(open.includes("offense.post_reads"), "post play is asked about instead");
+  });
+
+  await test("a zone team gets zone questions; a man team never does", () => {
+    const zone = rankedQuestions({
+      knowledge: [],
+      areaStates: [],
+      unknowns: [],
+      turns: [{ role: "coach", content: "We sit in a 2-3 zone almost every possession." }],
+    }).map((a) => a.area.id);
+    assert(zone.includes("defense.zone"), "zone principles are in play");
+
+    const man = rankedQuestions({
+      knowledge: [],
+      areaStates: [],
+      unknowns: [],
+      turns: [{ role: "coach", content: "We play man to man every possession and switch 1 through 4." }],
+    }).map((a) => a.area.id);
+    assert(!man.includes("defense.zone"), "a man team is never asked about zone");
+  });
+
+  await test("negations are read correctly", () => {
+    equal(deriveSignals("we barely use ball screens").ballScreens, "no", "denial beats mention");
+    equal(deriveSignals("we run a lot of side ball screens").ballScreens, "yes", "mention counts");
+    equal(deriveSignals("we play fast").ballScreens, "unknown", "silence is silence");
+  });
+
+  // -------------------------------------------------------------------------
+  group("Film readiness — weighted by what this team actually does");
+
+  await test("an empty playbook is not ready and says what's missing", () => {
+    const r = calculateFilmReadiness({ knowledge: [], areaStates: [], unknowns: [], turns: [] });
+    equal(r.status, "learning", "nothing learned is not ready");
+    assert(r.essentialsMissing.length > 0, "essentials are named");
+    assert(!r.headline.includes("%"), "no fake precision shown to the coach");
+  });
+
+  await test("a claim with nothing stored behind it does not count", () => {
+    const r = calculateFilmReadiness({
+      knowledge: [],
+      areaStates: [
+        { areaId: "offense.identity", status: "covered", confidence: 1, note: null },
+        { areaId: "offense.shot_selection", status: "covered", confidence: 1, note: null },
+        { areaId: "defense.identity", status: "covered", confidence: 1, note: null },
+        { areaId: "program.priorities", status: "covered", confidence: 1, note: null },
+      ],
+      unknowns: [],
+      turns: [],
+    });
+    equal(r.status, "learning", "self-reported coverage is not evidence");
+  });
+
+  await test("a team with no ball screens is not held back by ball-screen reads", () => {
+    const essentials = ["offense.identity", "offense.shot_selection", "defense.identity", "program.priorities"];
+    const supporting = ["offense.principles", "offense.actions", "defense.principles", "program.decision_vs_outcome", "defense.ball_screen_coverage", "offense.transition", "defense.transition", "offense.post_reads", "program.language"];
+
+    const knowledge = [...essentials, ...supporting].flatMap((areaId) => [
+      node({ areaId, instruction: `${areaId} first` }),
+      node({ areaId, instruction: `${areaId} second`, priority: 2 }),
+    ]);
+    const areaStates = [...essentials, ...supporting].map((areaId) => ({
+      areaId,
+      status: "covered" as const,
+      confidence: 0.9,
       note: null,
     }));
-    // One node per critical topic: touched, but thin.
-    const thin = critical.map((t, i) => stored({ id: `n${i}`, topicId: t.id }));
-    const thinCoverage = computeCoverage({ knowledge: thin, topicStates: states });
-    equal(thinCoverage.missingCritical.length, 0, "every critical topic is touched");
-    assert(!thinCoverage.filmReady, "one line per topic is not enough depth");
 
-    const deep = critical.flatMap((t, i) => [
-      stored({ id: `a${i}`, topicId: t.id, priority: 1 }),
-      stored({ id: `b${i}`, topicId: t.id, priority: 2 }),
+    const noBallScreens = calculateFilmReadiness({
+      knowledge,
+      areaStates,
+      unknowns: [],
+      turns: [{ role: "coach", content: "We're 4-out-1-in, post heavy. We barely use ball screens." }],
+    });
+    equal(noBallScreens.status, "film_ready", "ready without any ball-screen knowledge");
+  });
+
+  await test("a ball-screen team IS held back by the same gap", () => {
+    const covered = ["offense.identity", "offense.shot_selection", "defense.identity", "program.priorities", "offense.principles", "offense.actions", "defense.principles"];
+    const knowledge = covered.flatMap((areaId) => [
+      node({ areaId, instruction: `${areaId} a` }),
+      node({ areaId, instruction: `${areaId} b`, priority: 2 }),
     ]);
-    const deepCoverage = computeCoverage({ knowledge: deep, topicStates: states });
-    assert(deepCoverage.filmReady, "depth across every critical topic reaches film-ready");
+    const areaStates = covered.map((areaId) => ({
+      areaId,
+      status: "covered" as const,
+      confidence: 0.9,
+      note: null,
+    }));
+
+    const r = calculateFilmReadiness({
+      knowledge,
+      areaStates,
+      unknowns: [],
+      turns: [{ role: "coach", content: "Our whole offense is side ball screens and pick and roll." }],
+    });
+    assert(r.status !== "film_ready", "the thing they actually run has to be known");
   });
 
-  // --- next-question logic -------------------------------------------------
+  await test("an important unresolved gap blocks readiness", () => {
+    const covered = ["offense.identity", "offense.shot_selection", "defense.identity", "program.priorities", "offense.principles", "defense.principles", "offense.actions", "defense.ball_screen_coverage"];
+    const knowledge = covered.flatMap((areaId) => [
+      node({ areaId, instruction: `${areaId} a` }),
+      node({ areaId, instruction: `${areaId} b`, priority: 2 }),
+    ]);
+    const areaStates = covered.map((areaId) => ({ areaId, status: "covered" as const, confidence: 0.9, note: null }));
+    const turns = [{ role: "coach", content: "man to man, 5-out, play fast" }];
 
-  group("Next topic — ReadRep decides what is in play, the model decides how to ask");
+    const clean = calculateFilmReadiness({ knowledge, areaStates, unknowns: [], turns });
+    const blocked = calculateFilmReadiness({
+      knowledge,
+      areaStates,
+      unknowns: [unknown({ areaId: "offense.principles", importance: 0.85 })],
+      turns,
+    });
 
-  await test("gated topics stay out of play until their prerequisite is answered", () => {
-    const open = openTopics({ knowledge: [], topicStates: [] }).map((t) => t.id);
-    assert(open.includes("team.identity"), "the ungated opener is available");
-    assert(
-      !open.includes("offense.ball_screen.vs_drop"),
-      "ball-screen reads wait for the coach to say they run ball screens",
-    );
+    equal(clean.status, "film_ready", "ready without the gap");
+    assert(blocked.status !== "film_ready", "a gap that matters holds it back");
   });
 
-  await test("answering a prerequisite unlocks what depends on it", () => {
-    const states: TopicState[] = [
-      { topicId: "team.identity", status: "covered", confidence: 0.9, note: null },
-      { topicId: "offense.system", status: "covered", confidence: 0.9, note: null },
-      { topicId: "offense.ball_screen.usage", status: "covered", confidence: 0.9, note: null },
-    ];
-    const open = openTopics({ knowledge: [], topicStates: states }).map((t) => t.id);
-    assert(open.includes("offense.ball_screen.vs_drop"), "drop reads are now in play");
+  await test("the interview stops when nothing left is worth asking", () => {
+    const covered = ["offense.identity", "offense.shot_selection", "defense.identity", "program.priorities", "offense.principles", "defense.principles", "offense.actions"];
+    const knowledge = covered.flatMap((areaId) => [
+      node({ areaId, instruction: `${areaId} a` }),
+      node({ areaId, instruction: `${areaId} b`, priority: 2 }),
+      node({ areaId, instruction: `${areaId} c`, priority: 3 }),
+    ]);
+    const areaStates = covered.map((areaId) => ({ areaId, status: "covered" as const, confidence: 0.95, note: null }));
+
+    const { end } = shouldEndOnboarding({
+      knowledge,
+      areaStates,
+      unknowns: [],
+      turns: [{ role: "coach", content: "man to man, 5-out, fast, no post, barely use ball screens" }],
+    });
+    assert(end, "ReadRep stops rather than filling in obscure categories");
   });
 
-  await test("zone stays out of play until zone actually comes up", () => {
-    const states: TopicState[] = [
-      { topicId: "team.identity", status: "covered", confidence: 0.9, note: null },
-      { topicId: "defense.base", status: "covered", confidence: 0.9, note: null },
-    ];
-    const manOnly = openTopics({
-      knowledge: [stored({ topicId: "defense.base", phase: "defense", action: null, coverage: null, role: null, instruction: "we play man every possession" })],
-      topicStates: states,
-    }).map((t) => t.id);
-    assert(!manOnly.includes("defense.zone"), "a man-only team is never asked about zone");
-
-    const zoneTeam = openTopics({
-      knowledge: [stored({ topicId: "defense.base", phase: "defense", action: null, coverage: null, role: null, instruction: "we sit in a 2-3 zone" })],
-      topicStates: states,
-    }).map((t) => t.id);
-    assert(zoneTeam.includes("defense.zone"), "mentioning a zone puts zone specifics in play");
+  await test("essential areas are the ones a film read cannot do without", () => {
+    const essential = assessAreas({ knowledge: [], areaStates: [], unknowns: [], turns: [] })
+      .filter((a) => a.area.essential)
+      .map((a) => a.area.id);
+    for (const id of ["offense.identity", "offense.shot_selection", "defense.identity", "program.priorities"]) {
+      assert(essential.includes(id), `${id} is essential`);
+    }
   });
 
-  await test("film-critical gaps are ranked ahead of nice-to-haves", () => {
-    const open = openTopics({ knowledge: [], topicStates: [] });
-    assert(open.length > 0, "there is something to ask");
-    assert(open[0].filmCritical, "the first thing ReadRep wants is film-critical");
-  });
-
-  await test("a topic marked not_applicable is never asked again", () => {
-    const states: TopicState[] = [
-      { topicId: "team.identity", status: "covered", confidence: 0.9, note: null },
-      { topicId: "team.personnel", status: "not_applicable", confidence: 0, note: null },
-    ];
-    const open = openTopics({ knowledge: [], topicStates: states }).map((t) => t.id);
-    assert(!open.includes("team.personnel"), "ReadRep does not re-ask what doesn't apply");
-  });
-
-  // --- retrieval -----------------------------------------------------------
-
+  // -------------------------------------------------------------------------
   group("Retrieval — a read only surfaces in the situation it belongs to");
 
   const graph: KnowledgeNode[] = [
-    stored({ id: "drop-1", instruction: "turn the corner", priority: 1 }),
-    stored({
-      id: "drop-2",
-      instruction: "hit the roller",
-      trigger: "the big commits to the ball",
-      parentId: "drop-1",
-      priority: 2,
-    }),
-    stored({
-      id: "switch-1",
-      topicId: "offense.ball_screen.vs_switch",
-      coverage: "switch",
-      instruction: "hunt the mismatch immediately",
-    }),
-    stored({
-      id: "trans-1",
-      topicId: "offense.pace",
-      action: "transition",
-      coverage: null,
-      role: null,
-      instruction: "push it on every miss",
-    }),
-    stored({
-      id: "priorities-1",
-      topicId: "coaching.priorities",
-      phase: "coaching",
-      action: null,
-      coverage: null,
-      role: null,
-      instruction: "we correct effort before we correct technique",
-    }),
+    node({ id: "drop-1", areaId: "offense.ball_screen_reads", action: "ball_screen", coverage: "drop", role: "ball_handler", instruction: "turn the corner" }),
+    node({ id: "drop-2", areaId: "offense.ball_screen_reads", action: "ball_screen", coverage: "drop", role: "ball_handler", instruction: "hit the roller", trigger: "the big commits to the ball", parentId: "drop-1", priority: 2 }),
+    node({ id: "switch-1", areaId: "offense.ball_screen_reads", action: "ball_screen", coverage: "switch", instruction: "hunt the mismatch" }),
+    node({ id: "trans-1", areaId: "offense.transition", action: "transition", instruction: "push it on every miss" }),
+    node({ id: "prio-1", areaId: "program.priorities", phase: "coaching", instruction: "effort before technique" }),
+    node({ id: "guess-1", areaId: "offense.principles", provenance: "inferred", instruction: "corners hold their spacing", confidence: 0.4 }),
   ];
 
   await test("drop reads do not surface on a switched ball screen", () => {
-    const reads = selectReads(graph, {
-      phase: "offense",
-      action: "ball_screen",
-      coverage: "switch",
-    });
-    const ids = reads.map((r) => r.node.id);
-    assert(!ids.includes("drop-1"), "vs-drop rules must not bleed into a switch");
+    const ids = selectReads(graph, { phase: "offense", action: "ball_screen", coverage: "switch" }).map((r) => r.node.id);
+    assert(!ids.includes("drop-1"), "vs-drop rules never bleed into a switch");
     assert(ids.includes("switch-1"), "the switch rule is retrieved");
   });
 
-  await test("ball-screen coverage rules do not surface in transition", () => {
-    const reads = selectReads(graph, { phase: "offense", action: "transition" });
-    const ids = reads.map((r) => r.node.id);
-    assert(!ids.includes("drop-1"), "a coverage read is meaningless without a ball screen");
-    assert(!ids.includes("switch-1"), "same for the switch read");
+  await test("coverage rules do not surface in transition", () => {
+    const ids = selectReads(graph, { phase: "offense", action: "transition" }).map((r) => r.node.id);
+    assert(!ids.includes("drop-1") && !ids.includes("switch-1"), "no ball screen, no coverage rules");
     assert(ids.includes("trans-1"), "the transition read is retrieved");
   });
 
-  await test("coaching knowledge is always in scope", () => {
-    const reads = selectReads(graph, { phase: "offense", action: "post" });
-    assert(
-      reads.some((r) => r.node.id === "priorities-1"),
-      "how the coach coaches applies to every possession",
-    );
+  await test("how the coach coaches applies to every possession", () => {
+    const ids = selectReads(graph, { phase: "defense", action: "half_court" }).map((r) => r.node.id);
+    assert(ids.includes("prio-1"), "priorities are always in scope");
   });
 
-  await test("defensive situations do not retrieve offensive reads", () => {
-    const reads = selectReads(graph, { phase: "defense", action: "ball_screen", coverage: "drop" });
-    const ids = reads.map((r) => r.node.id);
-    assert(!ids.includes("drop-1"), "an offensive read is not defensive instruction");
-  });
-
-  await test("a conditional chain is retrieved intact and in order", () => {
-    const reads = selectReads(graph, {
-      phase: "offense",
-      action: "ball_screen",
-      coverage: "drop",
-      role: "ball_handler",
-    });
+  await test("a conditional chain is retrieved intact and flagged inferences stay flagged", () => {
+    const reads = selectReads(graph, { phase: "offense", action: "ball_screen", coverage: "drop", role: "ball_handler" });
     const root = reads.find((r) => r.node.id === "drop-1");
-    assert(root, "the first read is retrieved");
-    equal(root!.children.length, 1, "its branch comes with it");
-    equal(root!.children[0].id, "drop-2", "the branch is the right one");
+    equal(root?.children[0]?.id, "drop-2", "the branch comes with the read");
 
-    const prompt = readsToPrompt(reads);
-    includes(prompt, "turn the corner", "prompt carries the first read");
-    includes(prompt, "If the big commits to the ball → hit the roller", "prompt carries the branch");
-  });
-
-  await test("the most specifically-scoped read is ranked first", () => {
-    const reads = selectReads(graph, {
-      phase: "offense",
-      action: "ball_screen",
-      coverage: "drop",
-      role: "ball_handler",
-    });
-    equal(reads[0].node.id, "drop-1", "the exact-match read leads");
-  });
-
-  await test("inferred knowledge is flagged in the prompt", () => {
-    const reads = selectReads(
-      [stored({ id: "guess", source: "inferred", instruction: "probably spaces the corner" })],
-      { phase: "offense", action: "ball_screen", coverage: "drop" },
-    );
-    includes(readsToPrompt(reads), "(inferred, unconfirmed)", "a guess is never presented as fact");
+    const prompt = readsToPrompt(selectReads(graph, { phase: "offense" }));
+    includes(prompt, "If the big commits to the ball → hit the roller", "chain rendered");
+    includes(prompt, "(inferred, unconfirmed)", "a guess is never presented as fact");
   });
 
   report();

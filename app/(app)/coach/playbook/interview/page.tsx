@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import { KeyRound } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/profile/queries";
-import { getInterviewSnapshot } from "@/lib/interview/queries";
+import { getInterviewSnapshot, emptySnapshot } from "@/lib/interview/queries";
 import { toInterviewView } from "@/lib/interview/view";
-import { providerMode, REQUIRED_ENV_VAR } from "@/lib/ai/provider";
+import { API_KEY_VAR, MODEL_VAR, DEFAULT_MODEL, providerMode } from "@/lib/ai/anthropic";
 import { getTeam } from "@/lib/teams/queries";
 import { CoachInterview } from "@/components/playbook/coach-interview";
 import { PageHeader } from "@/components/ui/page-header";
@@ -38,8 +38,8 @@ export default async function InterviewPage() {
           <EmptyState
             variant="prominent"
             icon={KeyRound}
-            title={`${REQUIRED_ENV_VAR} is not set`}
-            description={`Add ${REQUIRED_ENV_VAR}=… to .env.local and restart the dev server. Automated tests can instead set READREP_AI_MODE=mock, which runs clearly-labelled scripted answers — never presented as real intelligence.`}
+            title={`${API_KEY_VAR} is not set`}
+            description={`Create a key in the Anthropic Console, then add ${API_KEY_VAR}=… to .env.local and restart the dev server. ${MODEL_VAR} is optional and defaults to ${DEFAULT_MODEL}. Automated tests can set READREP_AI_MODE=mock instead, which runs clearly-labelled scripted answers — never presented as real intelligence.`}
             action={
               <LinkButton href="/coach/playbook" variant="secondary">
                 Back to the playbook
@@ -51,25 +51,11 @@ export default async function InterviewPage() {
     );
   }
 
-  const snapshot = await getInterviewSnapshot(profile.team_id);
+  const snapshot =
+    (await getInterviewSnapshot(profile.team_id)) ??
+    emptySnapshot(profile.team_id, (await getTeam(profile.team_id))?.name ?? "Your team");
 
-  // No playbook row yet — the first turn creates it, so start from an empty
-  // view rather than blocking on a write the coach hasn't asked for.
-  const view = snapshot
-    ? toInterviewView(snapshot)
-    : toInterviewView({
-        playbookId: "",
-        teamId: profile.team_id,
-        teamName: (await getTeam(profile.team_id))?.name ?? "Your team",
-        completedAt: null,
-        knowledge: [],
-        topicStates: [],
-        turns: [],
-        terms: [],
-        scratch: { ambiguities: [], nextTopicId: null },
-      });
-
-  return <CoachInterview initialView={view} mode={mode} />;
+  return <CoachInterview initialView={toInterviewView(snapshot)} isMock={mode === "mock"} />;
 }
 
 export const dynamic = "force-dynamic";

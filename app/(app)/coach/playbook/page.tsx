@@ -3,9 +3,9 @@ import { MessagesSquare, Pencil, Sparkles } from "lucide-react";
 import { getCurrentProfile } from "@/lib/profile/queries";
 import { getTeam } from "@/lib/teams/queries";
 import { getPlaybook, hasProgress, type CoverageRule } from "@/lib/playbook/queries";
-import { playbookCoverage } from "@/lib/playbook/ai-context";
 import { getInterviewSnapshot } from "@/lib/interview/queries";
-import { toInterviewView, type ReadView } from "@/lib/interview/view";
+import { toInterviewView, type FactView } from "@/lib/interview/view";
+import { TeachReadRep, ResetInterview } from "@/components/playbook/teach-readrep";
 import {
   COVERAGE_LABELS,
   ROLE_LABELS,
@@ -77,23 +77,21 @@ function CoverageBlock({ rules, phase }: { rules: CoverageRule[]; phase: "offens
   );
 }
 
-/** One read from the interview's knowledge graph, with its conditional chain. */
-function InterviewRead({ read }: { read: ReadView }) {
+/** One fact ReadRep learned, with any conditional reads that branch off it. */
+function InterviewFact({ fact }: { fact: FactView }) {
   return (
-    <li className="rounded-lg border border-border bg-surface px-4 py-3">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-          {read.scope}
+    <li className="flex flex-col gap-0.5">
+      <p className="text-[13.5px] leading-relaxed">
+        {fact.scope && (
+          <span className="mr-1.5 font-mono text-[11px] uppercase text-primary">{fact.scope}</span>
+        )}
+        <span className={fact.provenance === "inferred" ? "italic text-muted-foreground" : "text-foreground"}>
+          {fact.label}
         </span>
-        <span className="text-[11px] text-faint-foreground">{read.topicLabel}</span>
-      </div>
-      <p className="mt-1.5 text-[13.5px] leading-relaxed text-foreground">
-        <span className="mr-1.5 font-mono text-[11px] text-muted-foreground">{read.priority}.</span>
-        {read.text}
       </p>
-      {read.children.length > 0 && (
-        <ul className="mt-1.5 flex flex-col gap-1 border-l border-border-strong pl-3">
-          {read.children.map((child) => (
+      {fact.children.length > 0 && (
+        <ul className="ml-3 flex flex-col border-l border-border pl-2.5">
+          {fact.children.map((child) => (
             <li key={child.id} className="text-[12.5px] leading-relaxed text-muted-foreground">
               {child.text}
             </li>
@@ -141,7 +139,7 @@ export default async function PlaybookPage() {
   ]);
 
   const interview = snapshot ? toInterviewView(snapshot) : null;
-  const hasInterview = (interview?.knowledgeCount ?? 0) > 0;
+  const hasInterview = (interview?.confirmedCount ?? 0) + (interview?.inferredCount ?? 0) > 0;
 
   if ((!playbook || !hasProgress(playbook)) && !hasInterview) {
     return (
@@ -179,7 +177,6 @@ export default async function PlaybookPage() {
   // playbook is impossible; this keeps the types honest rather than asserting.
   if (!playbook) redirect("/coach/playbook/interview");
 
-  const coverage = playbookCoverage(playbook.answers);
   const steps = flattenSteps(playbook.answers);
 
   // First step id per section, so each area's Edit link deep-links correctly.
@@ -223,60 +220,65 @@ export default async function PlaybookPage() {
       </div>
 
       <div className="rr-animate-in rr-delay-1 flex flex-wrap items-center gap-2">
-        {playbook.completedAt ? (
-          <Badge tone="success">Complete</Badge>
-        ) : (
-          <Badge tone="warning">In progress</Badge>
-        )}
-        <Badge tone="neutral">
-          {coverage.answered} of {coverage.total} questions answered
+        <Badge tone={interview?.readiness.status === "film_ready" ? "success" : "warning"}>
+          {interview?.readiness.headline ?? "Not started"}
         </Badge>
-        {playbook.coverageRules.length > 0 && (
-          <Badge tone="primary">{playbook.coverageRules.length} coverage rules</Badge>
+        {interview && interview.confirmedCount > 0 && (
+          <Badge tone="neutral">{interview.confirmedCount} things you taught it</Badge>
+        )}
+        {interview && interview.inferredCount > 0 && (
+          <Badge tone="neutral">{interview.inferredCount} it worked out</Badge>
         )}
         {playbook.terms.length > 0 && (
           <Badge tone="primary">
-            {playbook.terms.length} custom {playbook.terms.length === 1 ? "term" : "terms"}
+            {playbook.terms.length} {playbook.terms.length === 1 ? "term" : "terms"}
           </Badge>
         )}
       </div>
 
-      {!playbook.completedAt && (
+      {interview?.readiness.status !== "film_ready" && (
         <div className="rr-animate-in rr-delay-1 flex flex-col gap-3 rounded-lg border border-dashed border-border-strong px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[13.5px] font-medium text-foreground">
-              {interview && interview.missingCritical.length > 0
-                ? `ReadRep still needs: ${interview.missingCritical.slice(0, 2).join(", ")}`
-                : "Pick up where you left off"}
+              {interview?.readiness.headline ?? "ReadRep hasn't met your team yet"}
             </p>
             <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              It can&apos;t coach a possession the way you would until it knows these.
+              {interview?.readiness.reason ?? "A few questions and it can start reading your film."}
             </p>
           </div>
           <LinkButton href="/coach/playbook/interview" size="sm">
-            Keep teaching
+            {hasInterview ? "Keep teaching" : "Start"}
           </LinkButton>
         </div>
       )}
 
       {interview && hasInterview && (
-        <section className="rr-animate-in rr-delay-2 flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
-              From the interview
-            </h2>
-            <span className="text-[12px] text-muted-foreground">
-              {Math.round(interview.overall * 100)}% understood
-              {interview.filmReady && " · film-ready"}
-            </span>
-          </div>
-          <ul className="flex flex-col gap-2">
-            {interview.reads.map((read) => (
-              <InterviewRead key={read.id} read={read} />
-            ))}
-          </ul>
-        </section>
+        <div className="rr-animate-in rr-delay-2 flex flex-col gap-6">
+          {interview.groups.map((group) => (
+            <section key={group.group} className="flex flex-col gap-3">
+              <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
+                {group.label}
+              </h2>
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface px-5 py-4">
+                {group.sections.map((section) => (
+                  <div key={section.area} className="flex flex-col gap-1">
+                    <p className="text-[12px] text-muted-foreground">{section.area}</p>
+                    <ul className="flex flex-col gap-1">
+                      {section.facts.map((fact) => (
+                        <InterviewFact key={fact.id} fact={fact} />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
+
+      <div className="rr-animate-in rr-delay-2">
+        <TeachReadRep teamId={profile.team_id} ruleChanges={interview?.ruleChanges ?? []} />
+      </div>
 
       <div className="rr-animate-in rr-delay-2 flex flex-col gap-8">
         {areas.map((area) => (
@@ -368,6 +370,10 @@ export default async function PlaybookPage() {
             </ul>
           </section>
         )}
+      </div>
+
+      <div className="rr-animate-in rr-delay-3 flex flex-col gap-4">
+        <ResetInterview teamId={profile.team_id} />
       </div>
 
       <div className="rr-animate-in rr-delay-3 flex items-start gap-3 rounded-lg border border-border bg-surface px-5 py-4">

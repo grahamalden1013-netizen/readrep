@@ -1,5 +1,5 @@
 import type { InterviewTurnOutput, KnowledgeNodeOutput } from "@/lib/ai/schemas";
-import { isKnownTopic } from "@/lib/interview/coverage-model";
+import { isKnownArea } from "@/lib/interview/areas";
 import {
   ACTIONS,
   CLOCKS,
@@ -16,22 +16,21 @@ import {
   type TermCategory,
   type TopicStatus,
 } from "@/lib/interview/vocabulary";
-import type { KnowledgeNode } from "@/lib/interview/types";
+import type { KnowledgeNode, Provenance } from "@/lib/interview/types";
 
 /**
  * The gate between model output and the database.
  *
- * Schema validation already guarantees shape. This pass enforces the things a
- * JSON schema can't: that topic ids exist in *our* coverage model, that a
- * knowledge node's situation is internally coherent, that ids the model wants
- * to update actually belong to this playbook, and that nothing arrives at the
- * database as an unbounded list. Anything that fails is dropped and reported —
- * never coerced into a guess.
+ * Schema validation already guarantees shape. This pass enforces what a JSON
+ * schema cannot: that area ids exist in ReadRep's own framework, that ids the
+ * model wants to change belong to this playbook, that a read's situation is
+ * internally coherent, and that nothing arrives unbounded. Anything that fails
+ * is dropped and reported — never coerced into a guess.
  */
 
 export type NormalizedNode = {
   ref: string;
-  topicId: string;
+  areaId: string;
   phase: Phase;
   action: Action | null;
   coverage: Coverage | null;
@@ -41,7 +40,7 @@ export type NormalizedNode = {
   instruction: string;
   priority: number;
   confidence: number;
-  source: "coach" | "inferred";
+  provenance: Provenance;
   parentRef: string | null;
   fingerprint: string;
 };
@@ -53,28 +52,40 @@ export type NormalizedUpdate = {
   priority: number | null;
   confidence: number | null;
   retire: boolean;
+  replacesConfirmedRule: boolean;
   reason: string | null;
+};
+
+export type NormalizedUnknown = {
+  areaId: string;
+  question: string;
+  whyItMatters: string | null;
+  importance: number;
 };
 
 export type NormalizedTurn = {
   assistantMessage: string;
   nodes: NormalizedNode[];
   updates: NormalizedUpdate[];
+  confirmations: { id: string; reason: string | null }[];
   terminology: { term: string; meaning: string; category: TermCategory }[];
-  ambiguities: string[];
-  corrections: string[];
-  confidenceUpdates: { topicId: string; confidence: number }[];
-  coverageUpdates: { topicId: string; status: TopicStatus; note: string | null }[];
-  nextTopicId: string | null;
+  conflicts: { id: string | null; description: string; likelyException: boolean }[];
+  unknowns: NormalizedUnknown[];
+  resolvedUnknowns: string[];
+  coverageUpdates: { areaId: string; status: TopicStatus; confidence: number; note: string | null }[];
+  modelReadiness: { status: "learning" | "almost_ready" | "film_ready"; reason: string };
+  nextAreaId: string | null;
+  informationValue: "high" | "medium" | "low";
   nextQuestionReason: string | null;
-  modelSaysReady: boolean;
-  /** Everything discarded, with a reason. Surfaced in logs and dev UI. */
+  suggestions: string[];
+  modelSaysEnd: boolean;
+  /** Everything discarded, with a reason. Surfaced in tests and dev output. */
   rejected: string[];
 };
 
-const MAX_NODES = 12;
-const MAX_UPDATES = 12;
-const MAX_TERMS = 8;
+const MAX_CONFIRMED = 16;
+const MAX_INFERRED = 10;
+const MAX_UPDATES = 10;
 
 const clean = (value: string | null | undefined, max: number): string | null => {
   const trimmed = value?.replace(/\s+/g, " ").trim();
@@ -88,12 +99,13 @@ const inList = <T extends string>(list: readonly T[], value: unknown): T | null 
   typeof value === "string" && (list as readonly string[]).includes(value) ? (value as T) : null;
 
 /**
- * A stable identity for a read's slot in the team's system. Two answers that
- * describe the same situation, condition, and read order land on the same row,
- * so re-answering a question updates knowledge instead of duplicating it.
+ * A stable identity for a read's slot in the team's system, so re-answering a
+ * question updates knowledge rather than duplicating it. Provenance is part of
+ * it: an inference and a confirmed rule about the same thing are different
+ * rows, which is what lets a confirmation promote one without losing the other.
  */
 export function fingerprintOf(node: {
-  topicId: string;
+  areaId: string;
   phase: string;
   action: string | null;
   coverage: string | null;
@@ -101,9 +113,10 @@ export function fingerprintOf(node: {
   clock: string | null;
   trigger: string | null;
   priority: number;
+  provenance?: string;
 }): string {
   return [
-    node.topicId,
+    node.areaId,
     node.phase,
     node.action ?? "-",
     node.coverage ?? "-",
@@ -111,14 +124,15 @@ export function fingerprintOf(node: {
     node.clock ?? "-",
     (node.trigger ?? "-").toLowerCase().replace(/[^a-z0-9 ]/g, "").slice(0, 60),
     node.priority,
+    node.provenance ?? "confirmed",
   ].join("|");
 }
 
 /**
  * Situation coherence. A coverage only means something on a ball screen; an
- * offensive role can't appear on a defensive read. Rather than reject the whole
- * node, the incoherent dimension is dropped — the instruction is still true,
- * just less narrowly scoped.
+ * offensive role cannot appear on a defensive read. The incoherent dimension is
+ * dropped rather than the whole read — the instruction is still true, just less
+ * narrowly scoped.
  */
 function coerceScope(node: KnowledgeNodeOutput, rejected: string[]) {
   const phase = inList(PHASES, node.phase) ?? "team";
@@ -127,10 +141,7 @@ function coerceScope(node: KnowledgeNodeOutput, rejected: string[]) {
   let role = inList(ROLES, node.role);
   const clock = inList(CLOCKS, node.clock);
 
-  if (coverage && action !== "ball_screen") {
-    // A coverage without a ball screen is meaningless; assume the screen.
-    action = "ball_screen";
-  }
+  if (coverage && action !== "ball_screen") action = "ball_screen";
 
   const offenseRoles: Role[] = ["ball_handler", "screener", "off_ball"];
   const defenseRoles: Role[] = ["on_ball", "screener_def", "low_man", "weak_side"];
@@ -142,25 +153,23 @@ function coerceScope(node: KnowledgeNodeOutput, rejected: string[]) {
     rejected.push(`Dropped offensive role "${role}" from a defensive read.`);
     role = null;
   }
-  if (role && (phase === "team" || phase === "coaching")) {
-    role = null;
-  }
+  if (role && (phase === "team" || phase === "coaching")) role = null;
 
   return { phase, action, coverage, role, clock };
 }
 
-export function normalizeTurn(
-  raw: InterviewTurnOutput,
-  context: { knownNodeIds: Set<string>; existingTerms: Set<string> },
-): NormalizedTurn {
-  const rejected: string[] = [];
-
+function normalizeNodes(
+  candidates: KnowledgeNodeOutput[],
+  provenance: Provenance,
+  limit: number,
+  seen: Set<string>,
+  rejected: string[],
+): NormalizedNode[] {
   const nodes: NormalizedNode[] = [];
-  const seenFingerprints = new Set<string>();
 
-  for (const candidate of raw.extracted_knowledge.slice(0, MAX_NODES)) {
-    if (!isKnownTopic(candidate.topic_id)) {
-      rejected.push(`Unknown topic "${candidate.topic_id}" — knowledge discarded.`);
+  for (const candidate of candidates.slice(0, limit)) {
+    if (!isKnownArea(candidate.area_id)) {
+      rejected.push(`Unknown area "${candidate.area_id}" — knowledge discarded.`);
       continue;
     }
     const instruction = clean(candidate.instruction, 240);
@@ -170,30 +179,54 @@ export function normalizeTurn(
     }
 
     const scope = coerceScope(candidate, rejected);
-    const priority = Math.min(20, Math.max(1, Math.round(candidate.priority)));
-    const trigger = clean(candidate.trigger, 240);
-
     const node: NormalizedNode = {
       ref: candidate.ref.slice(0, 60),
-      topicId: candidate.topic_id,
+      areaId: candidate.area_id,
       ...scope,
-      trigger,
+      trigger: clean(candidate.trigger, 240),
       instruction,
-      priority,
-      confidence: clamp01(candidate.confidence),
-      source: candidate.source === "inferred" ? "inferred" : "coach",
+      priority: Math.min(20, Math.max(1, Math.round(candidate.priority))),
+      // An inference is never allowed to look as certain as a stated fact.
+      confidence: provenance === "inferred" ? Math.min(0.5, clamp01(candidate.confidence)) : clamp01(candidate.confidence),
+      provenance,
       parentRef: clean(candidate.parent_ref, 60),
       fingerprint: "",
     };
     node.fingerprint = fingerprintOf(node);
 
-    if (seenFingerprints.has(node.fingerprint)) {
+    if (seen.has(node.fingerprint)) {
       rejected.push(`Duplicate read in one turn: "${instruction}".`);
       continue;
     }
-    seenFingerprints.add(node.fingerprint);
+    seen.add(node.fingerprint);
     nodes.push(node);
   }
+
+  return nodes;
+}
+
+export function normalizeTurn(
+  raw: InterviewTurnOutput,
+  context: { knownNodeIds: Set<string>; existingTerms: Set<string>; openUnknowns: Set<string> },
+): NormalizedTurn {
+  const rejected: string[] = [];
+  const seen = new Set<string>();
+
+  const confirmed = normalizeNodes(
+    raw.confirmed_knowledge_updates,
+    "confirmed",
+    MAX_CONFIRMED,
+    seen,
+    rejected,
+  );
+  const inferred = normalizeNodes(
+    raw.inferred_knowledge_updates,
+    "inferred",
+    MAX_INFERRED,
+    seen,
+    rejected,
+  );
+  const nodes = [...confirmed, ...inferred];
 
   // A parent_ref pointing at nothing would orphan the chain — flatten it.
   const refs = new Set(nodes.map((n) => n.ref));
@@ -208,7 +241,6 @@ export function normalizeTurn(
   const updates: NormalizedUpdate[] = [];
   for (const u of raw.updated_knowledge.slice(0, MAX_UPDATES)) {
     if (!context.knownNodeIds.has(u.id)) {
-      // The model does not get to name arbitrary rows.
       rejected.push(`Update to unknown knowledge id "${u.id}" discarded.`);
       continue;
     }
@@ -219,66 +251,103 @@ export function normalizeTurn(
       priority: u.priority == null ? null : Math.min(20, Math.max(1, Math.round(u.priority))),
       confidence: u.confidence == null ? null : clamp01(u.confidence),
       retire: Boolean(u.retire),
+      replacesConfirmedRule: Boolean(u.replaces_confirmed_rule),
       reason: clean(u.reason, 240),
     });
   }
 
+  const confirmations: NormalizedTurn["confirmations"] = [];
+  for (const c of raw.confirmed_inferences.slice(0, MAX_UPDATES)) {
+    if (!context.knownNodeIds.has(c.id)) {
+      rejected.push(`Confirmation of unknown knowledge id "${c.id}" discarded.`);
+      continue;
+    }
+    confirmations.push({ id: c.id, reason: clean(c.reason, 240) });
+  }
+
   const terminology: NormalizedTurn["terminology"] = [];
-  for (const t of raw.terminology_detected.slice(0, MAX_TERMS)) {
+  for (const t of raw.terminology_detected) {
     const term = clean(t.term, 60);
     const meaning = clean(t.meaning, 240);
     if (!term || !meaning) continue;
     if (context.existingTerms.has(term.toLowerCase())) continue;
     if (terminology.some((x) => x.term.toLowerCase() === term.toLowerCase())) continue;
-    terminology.push({
-      term,
-      meaning,
-      category: inList(TERM_CATEGORIES, t.category) ?? "other",
+    terminology.push({ term, meaning, category: inList(TERM_CATEGORIES, t.category) ?? "other" });
+  }
+
+  const unknowns: NormalizedUnknown[] = [];
+  for (const u of raw.important_unknowns) {
+    if (!isKnownArea(u.area_id)) {
+      rejected.push(`Unknown recorded against a non-existent area "${u.area_id}".`);
+      continue;
+    }
+    const question = clean(u.question, 240);
+    if (!question) continue;
+    if (unknowns.some((x) => x.question.toLowerCase() === question.toLowerCase())) continue;
+    unknowns.push({
+      areaId: u.area_id,
+      question,
+      whyItMatters: clean(u.why_it_matters, 240),
+      importance: clamp01(u.importance),
     });
   }
 
-  const confidenceUpdates: NormalizedTurn["confidenceUpdates"] = [];
-  for (const c of raw.confidence_updates.slice(0, MAX_UPDATES)) {
-    if (!isKnownTopic(c.topic_id)) {
-      rejected.push(`Confidence for unknown topic "${c.topic_id}" discarded.`);
-      continue;
-    }
-    confidenceUpdates.push({ topicId: c.topic_id, confidence: clamp01(c.confidence) });
-  }
+  const resolvedUnknowns = raw.resolved_unknowns
+    .map((q) => clean(q, 240))
+    .filter((q): q is string => Boolean(q) && context.openUnknowns.has(q!.toLowerCase()));
 
   const coverageUpdates: NormalizedTurn["coverageUpdates"] = [];
-  for (const c of raw.coverage_updates.slice(0, MAX_UPDATES)) {
-    if (!isKnownTopic(c.topic_id)) {
-      rejected.push(`Coverage for unknown topic "${c.topic_id}" discarded.`);
+  for (const c of raw.coverage_updates) {
+    if (!isKnownArea(c.area_id)) {
+      rejected.push(`Coverage for unknown area "${c.area_id}" discarded.`);
       continue;
     }
     coverageUpdates.push({
-      topicId: c.topic_id,
+      areaId: c.area_id,
       status: inList(TOPIC_STATUSES, c.status) ?? "partial",
+      confidence: clamp01(c.confidence),
       note: clean(c.note, 240),
     });
   }
 
-  const nextTopicId =
-    raw.recommended_next_topic && isKnownTopic(raw.recommended_next_topic)
-      ? raw.recommended_next_topic
-      : null;
-  if (raw.recommended_next_topic && !nextTopicId) {
-    rejected.push(`Recommended topic "${raw.recommended_next_topic}" is not in the coverage model.`);
+  const conflicts = raw.knowledge_conflicts
+    .map((c) => ({
+      id: c.id && context.knownNodeIds.has(c.id) ? c.id : null,
+      description: clean(c.description, 240) ?? "",
+      likelyException: Boolean(c.likely_exception),
+    }))
+    .filter((c) => c.description.length > 0);
+
+  const nextAreaId =
+    raw.next_question_area && isKnownArea(raw.next_question_area) ? raw.next_question_area : null;
+  if (raw.next_question_area && !nextAreaId) {
+    rejected.push(`Next-question area "${raw.next_question_area}" is not in ReadRep's framework.`);
   }
+
+  const suggestions = raw.suggested_answers
+    .map((s) => clean(s, 60))
+    .filter((s): s is string => Boolean(s))
+    .slice(0, 4);
 
   return {
     assistantMessage: clean(raw.assistant_message, 900) ?? "",
     nodes,
     updates,
+    confirmations,
     terminology,
-    ambiguities: raw.ambiguities.map((a) => clean(a, 240)).filter((a): a is string => Boolean(a)).slice(0, 6),
-    corrections: raw.corrections.map((c) => clean(c, 240)).filter((c): c is string => Boolean(c)).slice(0, 6),
-    confidenceUpdates,
+    conflicts,
+    unknowns,
+    resolvedUnknowns,
     coverageUpdates,
-    nextTopicId,
-    nextQuestionReason: clean(raw.next_question_reason, 240),
-    modelSaysReady: Boolean(raw.ready_for_film),
+    modelReadiness: {
+      status: raw.film_readiness.status,
+      reason: clean(raw.film_readiness.reason, 240) ?? "",
+    },
+    nextAreaId,
+    informationValue: raw.next_question_information_value,
+    nextQuestionReason: clean(raw.reason_question_is_needed, 240),
+    suggestions,
+    modelSaysEnd: Boolean(raw.should_end_onboarding),
     rejected,
   };
 }

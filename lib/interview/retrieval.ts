@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { TOPIC_BY_ID } from "@/lib/interview/coverage-model";
+import { AREA_BY_ID } from "@/lib/interview/areas";
 import { describeNode, describeScope } from "@/lib/interview/normalize";
 import type { KnowledgeNode } from "@/lib/interview/types";
 import type { Action, Clock, Coverage, Phase, Role } from "@/lib/interview/vocabulary";
@@ -110,7 +110,7 @@ export function readsToPrompt(reads: RetrievedRead[]): string {
 
   const byScope = new Map<string, RetrievedRead[]>();
   for (const read of reads) {
-    const key = `${TOPIC_BY_ID.get(read.node.topicId)?.label ?? read.node.topicId} — ${read.scope}`;
+    const key = `${AREA_BY_ID.get(read.node.areaId)?.label ?? read.node.areaId} — ${read.scope}`;
     const list = byScope.get(key) ?? [];
     list.push(read);
     byScope.set(key, list);
@@ -120,7 +120,7 @@ export function readsToPrompt(reads: RetrievedRead[]): string {
   for (const [scope, group] of byScope) {
     lines.push(`  ${scope}:`);
     for (const read of [...group].sort((a, b) => a.node.priority - b.node.priority)) {
-      const flag = read.node.source === "inferred" ? " (inferred, unconfirmed)" : "";
+      const flag = read.node.provenance === "inferred" ? " (inferred, unconfirmed)" : "";
       lines.push(`    ${read.node.priority}. ${describeNode(read.node)}${flag}`);
       for (const child of read.children) {
         lines.push(`       └ ${describeNode(child)}`);
@@ -145,7 +145,7 @@ export async function getTeamKnowledge(teamId: string): Promise<KnowledgeNode[]>
   const { data } = await supabase
     .from("playbook_knowledge")
     .select(
-      "id, topic_id, phase, action, coverage, role, clock, trigger, instruction, priority, confidence, source, parent_id, created_at",
+      "id, area_id, phase, action, coverage, role, clock, trigger, instruction, priority, confidence, provenance, confirmed_at, parent_id, created_at",
     )
     .eq("playbook_id", playbook.id)
     .eq("status", "active")
@@ -153,7 +153,7 @@ export async function getTeamKnowledge(teamId: string): Promise<KnowledgeNode[]>
 
   return (data ?? []).map((row) => ({
     id: row.id,
-    topicId: row.topic_id,
+    areaId: row.area_id,
     phase: row.phase as Phase,
     action: row.action as Action | null,
     coverage: row.coverage as Coverage | null,
@@ -163,7 +163,8 @@ export async function getTeamKnowledge(teamId: string): Promise<KnowledgeNode[]>
     instruction: row.instruction,
     priority: row.priority,
     confidence: row.confidence,
-    source: row.source as "coach" | "inferred",
+    provenance: row.provenance as "confirmed" | "inferred",
+    confirmedAt: row.confirmed_at,
     parentId: row.parent_id,
     createdAt: row.created_at,
   }));

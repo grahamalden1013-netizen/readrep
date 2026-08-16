@@ -10,7 +10,8 @@
     "test": "npm run test:model && npm run test:engine",
     "test:model": "tsx tests/interview-model.test.ts",
     "test:engine": "tsx --conditions=react-server tests/interview-engine.test.ts",
-    "test:live": "tsx --conditions=react-server tests/interview-live.test.ts"
+    "test:live": "tsx --conditions=react-server tests/interview-live.test.ts",
+    "test:sim": "tsx --conditions=react-server tests/interview-sim.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

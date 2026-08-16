@@ -1,239 +1,295 @@
 import "server-only";
 
+import { getProvider } from "@/lib/ai/anthropic";
+import type { GenerateResult } from "@/lib/ai/provider";
 import { InterviewTurnSchema, type InterviewTurnOutput } from "@/lib/ai/schemas";
-import { generateStructured, type GenerateResult } from "@/lib/ai/provider";
-import { computeCoverage, openTopics } from "@/lib/interview/coverage";
-import { TOPIC_BY_ID } from "@/lib/interview/coverage-model";
-import { describeNode, describeScope, normalizeTurn, type NormalizedTurn } from "@/lib/interview/normalize";
+import {
+  OPENING_MESSAGE,
+  PROMPT_VERSION,
+  TEACH_PREFIX,
+  buildSystemPrompt,
+} from "@/lib/ai/prompts/coach-interview-v2";
+import { AREA_BY_ID } from "@/lib/interview/areas";
+import {
+  SKIP_REDUNDANCY,
+  assessAreas,
+  calculateFilmReadiness,
+  rankedQuestions,
+  shouldEndOnboarding,
+  type Readiness,
+} from "@/lib/interview/gain";
+import { normalizeTurn, type NormalizedTurn } from "@/lib/interview/normalize";
 import type { InterviewSnapshot } from "@/lib/interview/types";
-import { ACTIONS, CLOCKS, COVERAGES, PHASES, ROLES } from "@/lib/interview/vocabulary";
 
 /**
- * The AI interview engine.
+ * The interview engine.
  *
- * ReadRep owns the syllabus — which topics exist, which are in play, which are
- * still thin. The model owns the conversation: how to ask, in what order,
- * which follow-up an answer earns, and how to turn plain coaching English into
- * structured reads. This file is where those two halves meet.
+ * ReadRep decides what is worth asking (`lib/interview/gain.ts`); the model
+ * decides how to ask it and what a natural-language answer actually contained.
+ * This file joins the two and — importantly — enforces the first half rather
+ * than trusting the model to respect it. A question aimed at something the
+ * coach already answered is rejected here, not merely discouraged in a prompt.
  */
 
-const SYSTEM_RULES = `You are ReadRep's assistant coach. You are interviewing a head basketball coach so that ReadRep can later grade their players' in-game decisions the way this coach would.
+export { PROMPT_VERSION };
 
-WHO YOU ARE
-You know basketball at a high level. You know what a drop coverage is, what a short roll is, what "ice" means, and you never make the coach define standard terms. You are not a survey. You are a knowledgeable assistant coach sitting across the table.
+export type TurnMeta = {
+  provider: string;
+  model: string;
+  promptVersion: string;
+  latencyMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+};
 
-HOW TO INTERVIEW
-- Ask ONE question per turn. Never stack two questions.
-- React to what they actually said before you ask the next thing. A short acknowledgement, then the question.
-- If an answer is rich, go deeper on it instead of moving on. If an answer is thin, ask the one follow-up that would unlock the most.
-- If they say "I don't know" or "it depends", accept it and either ask what it depends on, or move to a different topic. Never re-ask the same question.
-- If they contradict something they said earlier, say so plainly in one clause and ask which one is right. Do not silently overwrite.
-- Match their vocabulary. If they call it "Chicago", you call it "Chicago".
-- Never lecture. Never list. Keep it under about 60 words.
-
-WHAT YOU ARE BUILDING
-Behind the conversation you are building a structured model of how this team plays. Every read you extract is scoped to a situation and can chain off another read, so a possession reads like:
-  side ball screen → vs drop → ball handler → priority 1 "turn the corner"
-                                            → child, trigger "the big commits to the ball" → "hit the roller"
-Use parent_ref to build those chains. Use priority for read order within one situation.
-
-EXTRACTION RULES
-- Only extract what the coach actually told you. Set source "coach" for those.
-- If you fill an obvious gap yourself, set source "inferred" and a confidence below 0.5. Be sparing.
-- topic_id MUST be one of the ids in the TOPICS list below. Never invent one.
-- Situation fields are closed enums. Leave one null rather than guessing.
-- confidence reflects how sure you are the coach meant this, not how good the idea is.
-- terminology_detected is for team-specific words only — call names, slang, their own cues. Not standard basketball vocabulary.
-- If the coach corrects something already stored, put it in updated_knowledge with that node's exact id, and describe the change in corrections.
-- coverage_updates: mark a topic "covered" only when its needs are genuinely met, "partial" when you have something but not enough, "not_applicable" when the coach tells you it doesn't apply to their team.
-- recommended_next_topic must be one of the OPEN TOPICS ids, and your assistant_message must be a question about that topic.
-- ready_for_film is your own judgement. ReadRep computes its own; yours is advisory.`;
-
-function vocabularyBlock(): string {
-  return [
-    "SITUATION VOCABULARY (closed enums — any other value is discarded)",
-    `phase: ${PHASES.join(", ")}`,
-    `action: ${ACTIONS.join(", ")} (or null)`,
-    `coverage: ${COVERAGES.join(", ")} (or null; only meaningful with action=ball_screen)`,
-    `role: ${ROLES.join(", ")} (or null; ball_handler/screener/off_ball are offense, on_ball/screener_def/low_man/weak_side are defense)`,
-    `clock: ${CLOCKS.join(", ")} (or null)`,
-  ].join("\n");
-}
-
-function topicsBlock(snapshot: InterviewSnapshot): string {
-  const coverage = computeCoverage(snapshot);
-  const open = openTopics(snapshot);
-  const byId = new Map(coverage.topics.map((t) => [t.topic.id, t]));
-
-  const lines: string[] = ["TOPICS (the only valid topic_id values)"];
-  for (const t of coverage.topics) {
-    const c = byId.get(t.topic.id);
-    lines.push(
-      `- ${t.topic.id} — ${t.topic.label}. ${t.topic.goal} [status: ${c?.status ?? "unknown"}, confidence: ${c?.confidence ?? 0}]`,
-    );
-  }
-
-  lines.push("", "OPEN TOPICS, ranked by what ReadRep most needs next:");
-  if (open.length === 0) {
-    lines.push("- (none — every applicable topic is covered)");
-  } else {
-    for (const t of open.slice(0, 8)) {
-      lines.push(`- ${t.id}: still needs ${t.needs.join("; ")}`);
+export type InterviewTurnResult =
+  | {
+      ok: true;
+      turn: NormalizedTurn;
+      meta: TurnMeta;
+      /** ReadRep's own readiness call, computed from stored facts. */
+      readiness: Readiness;
+      /** True when ReadRep has enough — its judgement, not the model's. */
+      end: boolean;
+      /** Redundancy violations caught and corrected. */
+      corrections: string[];
     }
-  }
-  return lines.join("\n");
-}
-
-function knowledgeBlock(snapshot: InterviewSnapshot): string {
-  if (snapshot.knowledge.length === 0) {
-    return "KNOWLEDGE ALREADY STORED\n(nothing yet — this is the start of the interview)";
-  }
-
-  const byScope = new Map<string, typeof snapshot.knowledge>();
-  for (const node of snapshot.knowledge) {
-    const scope = `${node.topicId} · ${describeScope(node)}`;
-    const list = byScope.get(scope) ?? [];
-    list.push(node);
-    byScope.set(scope, list);
-  }
-
-  const lines = ["KNOWLEDGE ALREADY STORED (use these exact ids in updated_knowledge)"];
-  for (const [scope, nodes] of byScope) {
-    lines.push(`  ${scope}`);
-    for (const n of [...nodes].sort((a, b) => a.priority - b.priority)) {
-      lines.push(
-        `    [${n.id}] ${n.priority}. ${describeNode(n)} (${n.source}, confidence ${n.confidence})`,
-      );
-    }
-  }
-  return lines.join("\n");
-}
-
-function stateBlock(snapshot: InterviewSnapshot): string {
-  const lines: string[] = [];
-
-  if (snapshot.terms.length > 0) {
-    lines.push(
-      "TERMS ALREADY LEARNED (do not repeat these in terminology_detected)",
-      ...snapshot.terms.map((t) => `- ${t.term}: ${t.meaning}`),
-    );
-  }
-
-  if (snapshot.scratch.ambiguities.length > 0) {
-    lines.push(
-      "",
-      "STILL UNCLEAR (resolve one of these if the conversation gives you a natural opening)",
-      ...snapshot.scratch.ambiguities.map((a) => `- ${a}`),
-    );
-  }
-
-  return lines.join("\n");
-}
-
-export function buildSystemPrompt(snapshot: InterviewSnapshot): string {
-  return [
-    SYSTEM_RULES,
-    "",
-    `TEAM: ${snapshot.teamName}`,
-    "",
-    vocabularyBlock(),
-    "",
-    topicsBlock(snapshot),
-    "",
-    knowledgeBlock(snapshot),
-    stateBlock(snapshot) ? `\n${stateBlock(snapshot)}` : "",
-  ].join("\n");
-}
+  | { ok: false; kind: string; message: string; mode: string };
 
 /**
- * The conversation as the provider sees it. The coach is the `user` and
- * ReadRep is the `assistant`, so the model continues its own voice rather
- * than being handed a transcript to summarize.
+ * The conversation as the provider sees it: the coach is `user`, ReadRep is
+ * `assistant`, so the model continues its own voice rather than being handed a
+ * transcript to summarize.
  */
 function buildMessages(
   snapshot: InterviewSnapshot,
   coachMessage: string | null,
 ): { role: "user" | "assistant"; content: string }[] {
-  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  const messages: { role: "user" | "assistant"; content: string }[] = snapshot.turns.map((turn) => ({
+    role: turn.role === "coach" ? ("user" as const) : ("assistant" as const),
+    content: turn.content,
+  }));
 
-  for (const turn of snapshot.turns) {
-    messages.push({
-      role: turn.role === "coach" ? "user" : "assistant",
-      content: turn.content,
-    });
-  }
-
-  if (coachMessage) {
-    messages.push({ role: "user", content: coachMessage });
-  }
+  if (coachMessage) messages.push({ role: "user", content: coachMessage });
 
   // The API requires the conversation to start with a user turn, and an
   // opening turn has no coach message at all.
   if (messages.length === 0 || messages[0].role !== "user") {
-    messages.unshift({
-      role: "user",
-      content:
-        "Start the interview. Introduce yourself in one sentence and ask your first question.",
-    });
+    messages.unshift({ role: "user", content: OPENING_MESSAGE });
   }
 
-  // Two coach messages can't sit back to back if a previous turn failed to
-  // persist an assistant reply; collapse them so the API stays happy.
+  // Two coach messages cannot sit back to back if a previous turn failed after
+  // saving the coach's words; collapse them so the API stays happy.
   const collapsed: typeof messages = [];
   for (const m of messages) {
     const last = collapsed[collapsed.length - 1];
-    if (last && last.role === m.role) {
-      last.content = `${last.content}\n\n${m.content}`;
-    } else {
-      collapsed.push({ ...m });
-    }
+    if (last && last.role === m.role) last.content = `${last.content}\n\n${m.content}`;
+    else collapsed.push({ ...m });
   }
 
   return collapsed;
 }
 
-export type InterviewTurnResult =
-  | { ok: true; turn: NormalizedTurn; mode: "live" | "mock" }
-  | { ok: false; kind: string; message: string; mode: string };
+/**
+ * Did the model aim its question at something already settled?
+ *
+ * The shortlist in the prompt already excludes redundant and irrelevant areas,
+ * so this should be rare — but "should be rare" is not an enforcement
+ * mechanism. Returns the reason when the question must not be asked.
+ */
+function redundancyViolation(
+  snapshot: InterviewSnapshot,
+  turn: NormalizedTurn,
+): string | null {
+  if (!turn.nextAreaId) return null;
+
+  const assessment = assessAreas(snapshot).find((a) => a.area.id === turn.nextAreaId);
+  if (!assessment) return null;
+
+  if (assessment.redundancy.score >= SKIP_REDUNDANCY) {
+    return `asked about ${assessment.area.label} — ${assessment.redundancy.reason}`;
+  }
+  if (assessment.relevance < 0.25) {
+    return `asked about ${assessment.area.label}, which doesn't apply to how this team plays`;
+  }
+  return null;
+}
+
+async function callProvider(
+  snapshot: InterviewSnapshot,
+  messages: { role: "user" | "assistant"; content: string }[],
+): Promise<GenerateResult<InterviewTurnOutput>> {
+  return getProvider().generate({
+    system: buildSystemPrompt(snapshot),
+    messages,
+    schema: InterviewTurnSchema,
+    effort: "medium",
+    maxTokens: 8000,
+    mockKey: snapshot.scratch.nextAreaId ?? "start",
+  });
+}
 
 /**
  * Runs one interview turn: build the prompt from current state, call the
- * provider, validate, and normalize. Persistence is the caller's job — this
- * function has no database access, which makes it testable end to end against
- * a real model without writing anything.
+ * provider, validate, normalize, and enforce redundancy. No database access —
+ * which is what lets the whole engine be exercised against a real model
+ * without writing anything.
  */
 export async function runInterviewTurn(
   snapshot: InterviewSnapshot,
   coachMessage: string | null,
+  options: { mode?: "interview" | "teach" } = {},
 ): Promise<InterviewTurnResult> {
-  const result: GenerateResult<InterviewTurnOutput> = await generateStructured({
-    system: buildSystemPrompt(snapshot),
-    messages: buildMessages(snapshot, coachMessage),
-    schema: InterviewTurnSchema,
-    effort: "medium",
-    maxTokens: 8000,
-    mockKey: snapshot.scratch.nextTopicId ?? "start",
-  });
+  const message =
+    options.mode === "teach" && coachMessage ? `${TEACH_PREFIX}${coachMessage}` : coachMessage;
+
+  const messages = buildMessages(snapshot, message);
+  const corrections: string[] = [];
+
+  let result = await callProvider(snapshot, messages);
+  let turn: NormalizedTurn | null = null;
+
+  const context = {
+    knownNodeIds: new Set(snapshot.knowledge.map((k) => k.id)),
+    existingTerms: new Set(snapshot.terms.map((t) => t.term.toLowerCase())),
+    openUnknowns: new Set(snapshot.unknowns.map((u) => u.question.toLowerCase())),
+  };
+
+  if (result.ok) {
+    turn = normalizeTurn(result.data, context);
+
+    // One corrective attempt. Teaching moments don't ask a question, so the
+    // check doesn't apply to them.
+    const violation = options.mode === "teach" ? null : redundancyViolation(snapshot, turn);
+    if (violation) {
+      corrections.push(`Rejected a redundant question: ${violation}`);
+      const open = rankedQuestions(snapshot);
+      const retryMessages = [
+        ...messages,
+        { role: "assistant" as const, content: turn.assistantMessage },
+        {
+          role: "user" as const,
+          content:
+            `You just ${violation}. I already told you that. ` +
+            (open.length > 0
+              ? `Ask about ${open[0].area.id} instead — ${open[0].area.needs.join("; ")}.`
+              : `There is nothing left worth asking. End the interview.`),
+        },
+      ];
+
+      const retry = await callProvider(snapshot, retryMessages);
+      if (retry.ok) {
+        const retried = normalizeTurn(retry.data, context);
+        if (!redundancyViolation(snapshot, retried)) {
+          result = retry;
+          turn = retried;
+        } else {
+          // Twice is enough. Stopping beats asking a coach something they
+          // already answered.
+          corrections.push("Second attempt was redundant too — ending the interview instead.");
+          turn = { ...retried, modelSaysEnd: true };
+          result = retry;
+        }
+      }
+    }
+  }
 
   if (!result.ok) {
     return { ok: false, kind: result.kind, message: result.message, mode: result.mode };
   }
 
-  const turn = normalizeTurn(result.data, {
-    knownNodeIds: new Set(snapshot.knowledge.map((k) => k.id)),
-    existingTerms: new Set(snapshot.terms.map((t) => t.term.toLowerCase())),
-  });
-
-  if (!turn.assistantMessage) {
+  if (!turn || !turn.assistantMessage) {
     return {
       ok: false,
       kind: "invalid_output",
-      message: "The model returned an empty question.",
+      message: "The model returned an empty reply.",
       mode: result.mode,
     };
   }
 
-  return { ok: true, turn, mode: result.mode === "mock" ? "mock" : "live" };
+  // Readiness is computed from what is about to be stored, so the answer this
+  // turn produced counts toward it.
+  const projected = projectSnapshot(snapshot, turn);
+  const readiness = calculateFilmReadiness(projected);
+  const ending = shouldEndOnboarding(projected);
+
+  return {
+    ok: true,
+    turn,
+    meta: {
+      provider: result.meta.provider,
+      model: result.meta.model,
+      promptVersion: PROMPT_VERSION,
+      latencyMs: result.meta.latencyMs,
+      inputTokens: result.meta.inputTokens,
+      outputTokens: result.meta.outputTokens,
+    },
+    readiness,
+    // The model's opinion can end the interview early, but it can never keep a
+    // coach in it once ReadRep has what it needs.
+    end: ending.end || (turn.modelSaysEnd && readiness.status !== "learning"),
+    corrections,
+  };
 }
 
-export { TOPIC_BY_ID };
+/**
+ * What the snapshot will look like once this turn is persisted. Used to judge
+ * readiness on the same facts the coach is about to see stored.
+ */
+export function projectSnapshot(snapshot: InterviewSnapshot, turn: NormalizedTurn) {
+  const resolved = new Set(turn.resolvedUnknowns.map((q) => q.toLowerCase()));
+
+  return {
+    knowledge: [
+      ...snapshot.knowledge,
+      ...turn.nodes.map((n, i) => ({
+        id: `projected-${i}`,
+        areaId: n.areaId,
+        phase: n.phase,
+        action: n.action,
+        coverage: n.coverage,
+        role: n.role,
+        clock: n.clock,
+        trigger: n.trigger,
+        instruction: n.instruction,
+        priority: n.priority,
+        confidence: n.confidence,
+        provenance: n.provenance,
+        confirmedAt: null,
+        parentId: null,
+        createdAt: new Date().toISOString(),
+      })),
+    ],
+    areaStates: mergeAreaStates(snapshot, turn),
+    unknowns: [
+      ...snapshot.unknowns.filter((u) => !resolved.has(u.question.toLowerCase())),
+      ...turn.unknowns.map((u, i) => ({
+        id: `projected-unknown-${i}`,
+        areaId: u.areaId,
+        question: u.question,
+        whyItMatters: u.whyItMatters,
+        importance: u.importance,
+        createdAt: new Date().toISOString(),
+      })),
+    ],
+    turns: [
+      ...snapshot.turns,
+      { role: "assistant" as const, content: turn.assistantMessage },
+    ],
+  };
+}
+
+function mergeAreaStates(snapshot: InterviewSnapshot, turn: NormalizedTurn) {
+  const byId = new Map(snapshot.areaStates.map((s) => [s.areaId, { ...s }]));
+  for (const c of turn.coverageUpdates) {
+    byId.set(c.areaId, {
+      areaId: c.areaId,
+      status: c.status,
+      confidence: c.confidence,
+      note: c.note,
+    });
+  }
+  return [...byId.values()];
+}
+
+export { AREA_BY_ID };
