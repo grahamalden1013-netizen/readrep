@@ -8,20 +8,26 @@ import type { Question } from "@/lib/playbook/questions";
 
 export type AnswerValue = { selections: string[]; customText: string | null };
 
-/** Chip used for single- and multi-select. Large tap target for mobile. */
+/**
+ * Chip used for single- and multi-select. Large tap target for mobile.
+ * Reports the correct ARIA role for its question type: single-select is a
+ * radio (one of many), multi-select is a checkbox (independent toggles).
+ */
 function Choice({
   label,
   selected,
+  single,
   onClick,
 }: {
   label: string;
   selected: boolean;
+  single: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      role="checkbox"
+      role={single ? "radio" : "checkbox"}
       aria-checked={selected}
       onClick={onClick}
       className={cn(
@@ -35,7 +41,8 @@ function Choice({
     >
       <span
         className={cn(
-          "flex size-4 shrink-0 items-center justify-center rounded border",
+          "flex size-4 shrink-0 items-center justify-center border",
+          single ? "rounded-full" : "rounded",
           selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong",
         )}
         aria-hidden="true"
@@ -91,11 +98,16 @@ export function QuestionField({
       </legend>
 
       {(question.type === "single" || question.type === "multi") && question.options && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div
+          role={question.type === "single" ? "radiogroup" : "group"}
+          aria-label={question.label}
+          className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        >
           {question.options.map((option) => (
             <Choice
               key={option}
               label={option}
+              single={question.type === "single"}
               selected={selections.includes(option)}
               onClick={() =>
                 question.type === "single" ? setSingle(option) : toggleMulti(option)
