@@ -7,36 +7,38 @@
    ========================================================================== */
 
 :root {
-  /* Surfaces — a cool graphite scale, not pure black. Each step is a real
+  /* Surfaces — midnight navy, not neutral graphite. Each step is a real
      step "closer to the viewer": canvas < card < raised < overlay. */
-  --background: #0a0b0d;
-  --surface: #131519;
-  --surface-2: #191c21;
-  --surface-3: #21252b;
-  --overlay: #16181c;
+  --background: #090a10;
+  --surface: #10121a;
+  --surface-2: #161923;
+  --surface-3: #1e222d;
+  --overlay: #12141c;
 
   /* Borders */
-  --border: #24282f;
-  --border-strong: #33383f;
-  --ring: #fb7a2f;
+  --border: #21242e;
+  --border-strong: #2e323f;
+  --ring: #e8703a;
 
-  /* Text */
-  --foreground: #f2f3f5;
-  --muted-foreground: #a0a7b0;
-  --faint-foreground: #6b7280;
+  /* Text — warm white against a cool navy base is a deliberate temperature
+     contrast; secondary text stays slate (cool), not warm. */
+  --foreground: #f5f2ec;
+  --muted-foreground: #9ba1ad;
+  --faint-foreground: #676d7a;
 
-  /* Brand accent — a confident amber-orange, tuned for a dark ground.
-     Two steps: a bright one for text/icons/links, a deeper one for
-     filled buttons where white text needs real contrast. */
-  --primary: #fb7a2f;
-  --primary-hover: #ff8f52;
-  --primary-active: #e8672a;
-  --primary-fill: #c2410c;
-  --primary-fill-hover: #d9560f;
-  --primary-fill-active: #9a3412;
-  --primary-foreground: #fff7f0;
-  --primary-soft: #2b1b10;
-  --primary-soft-foreground: #fdba84;
+  /* Brand accent — restrained amber-orange. Reserved for primary actions,
+     active states, and brand moments — not decoration. Two steps: a
+     bright one for text/icons/links, a deeper one for filled buttons
+     where white text needs real contrast. */
+  --primary: #e8703a;
+  --primary-hover: #f0824f;
+  --primary-active: #d05f2c;
+  --primary-fill: #b8410f;
+  --primary-fill-hover: #cc4a13;
+  --primary-fill-active: #93370d;
+  --primary-foreground: #fff8f3;
+  --primary-soft: #271811;
+  --primary-soft-foreground: #f0a273;
 
   /* Semantic — separate hues from the brand accent on purpose */
   --success: #34d399;
@@ -52,17 +54,17 @@
   --info-soft: #0f2530;
   --info-soft-foreground: #7dd3fc;
 
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  /* Radius — moderate, not the "excessive rounding" look */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
   /* Elevation — dark-mode shadows are darker-than-ground, not black-on-black */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 16px 40px -12px rgba(0, 0, 0, 0.65), 0 4px 10px -4px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 0 1px rgba(251, 122, 47, 0.16), 0 8px 24px -8px rgba(251, 122, 47, 0.28);
+  --shadow-glow: 0 0 0 1px rgba(232, 112, 58, 0.16), 0 8px 24px -8px rgba(232, 112, 58, 0.24);
 
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -72,8 +74,9 @@
   --duration-slow: 340ms;
 
   /* Layout */
-  --shell-sidebar-w: 248px;
-  --content-max-w: 960px;
+  --shell-sidebar-w: 232px;
+  --shell-topbar-h: 52px;
+  --content-max-w: 1120px;
 }
 
 @theme inline {

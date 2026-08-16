@@ -59,5 +59,6 @@ export type Prediction = {
 
 export type SessionSummary = Session & {
   clip_count: number;
+  completed_count: number;
   game_title: string | null;
 };
