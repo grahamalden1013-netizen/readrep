@@ -88,19 +88,49 @@ export async function saveResponse(
   return { ok: true };
 }
 
-/** Records which section the coach reached, so they resume in the right place. */
-export async function saveSectionProgress(
-  teamId: string,
-  sectionSlug: string,
-): Promise<ActionResult> {
+/** Records which step the coach reached, so they resume in the right place. */
+export async function saveStepProgress(teamId: string, stepId: string): Promise<ActionResult> {
   const auth = await authorizeAndGetPlaybookId(teamId);
   if (!auth.ok) return auth;
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("team_playbooks")
-    .update({ last_section: sectionSlug })
+    .update({ last_section: stepId })
     .eq("id", auth.playbookId);
+
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
+/**
+ * Upserts one cell of the ball-screen coverage matrix: for a given phase and
+ * coverage, what a specific role is taught to do. Stored relationally so
+ * situation-scoped retrieval can pull exactly this row.
+ */
+export async function saveCoverageRule(
+  teamId: string,
+  phase: "offense" | "defense",
+  coverage: string,
+  role: string,
+  reads: string[],
+  note: string | null,
+): Promise<ActionResult> {
+  const auth = await authorizeAndGetPlaybookId(teamId);
+  if (!auth.ok) return auth;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("playbook_coverage_rules").upsert(
+    {
+      playbook_id: auth.playbookId,
+      phase,
+      coverage,
+      role,
+      reads,
+      note: note?.trim() ? note.trim() : null,
+    },
+    { onConflict: "playbook_id,phase,coverage,role" },
+  );
 
   if (error) return { ok: false, message: error.message };
   return { ok: true };

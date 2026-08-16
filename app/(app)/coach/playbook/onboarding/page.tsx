@@ -7,9 +7,9 @@ import { OnboardingFlow } from "@/components/playbook/onboarding-flow";
 export default async function PlaybookOnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string }>;
+  searchParams: Promise<{ edit?: string; step?: string }>;
 }) {
-  const { edit } = await searchParams;
+  const { edit, step } = await searchParams;
   const profile = await getCurrentProfile();
   if (!profile) return null; // layout redirects
 
@@ -27,13 +27,18 @@ export default async function PlaybookOnboardingPage({
     getPlaybook(profile.team_id),
   ]);
 
+  // `?step=` deep-links from the summary's per-section Edit links;
+  // `?edit=1` restarts from the top.
+  const startStepId = step ?? (edit ? null : (playbook?.lastStep ?? null));
+
   return (
     <OnboardingFlow
       teamId={profile.team_id}
       teamName={team?.name ?? "Your team"}
       initialAnswers={playbook?.answers ?? {}}
       initialTerms={playbook?.terms ?? []}
-      startSection={edit ? null : (playbook?.lastSection ?? null)}
+      initialCoverageRules={playbook?.coverageRules ?? []}
+      startStepId={startStepId}
       isEditing={Boolean(playbook?.completedAt)}
     />
   );

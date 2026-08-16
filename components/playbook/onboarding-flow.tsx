@@ -7,13 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { QuestionField, type AnswerValue } from "@/components/playbook/question-field";
 import { TerminologyEditor } from "@/components/playbook/terminology-editor";
-import {
-  visibleSections,
-  visibleQuestions,
-  type Answers,
-} from "@/lib/playbook/questions";
-import { saveResponse, saveSectionProgress, completeOnboarding } from "@/lib/playbook/actions";
-import type { PlaybookTerm } from "@/lib/playbook/queries";
+import { CoverageMatrix } from "@/components/playbook/coverage-matrix";
+import { flattenSteps, visibleQuestions, type Answers } from "@/lib/playbook/questions";
+import { saveResponse, saveStepProgress, completeOnboarding } from "@/lib/playbook/actions";
+import type { PlaybookTerm, CoverageRule } from "@/lib/playbook/queries";
 import { cn } from "@/lib/cn";
 
 const EMPTY: AnswerValue = { selections: [], customText: null };
@@ -25,14 +22,16 @@ export function OnboardingFlow({
   teamName,
   initialAnswers,
   initialTerms,
-  startSection,
+  initialCoverageRules,
+  startStepId,
   isEditing,
 }: {
   teamId: string;
   teamName: string;
   initialAnswers: Answers;
   initialTerms: PlaybookTerm[];
-  startSection: string | null;
+  initialCoverageRules: CoverageRule[];
+  startStepId: string | null;
   isEditing: boolean;
 }) {
   const router = useRouter();
@@ -41,35 +40,37 @@ export function OnboardingFlow({
   const [error, setError] = useState<string | null>(null);
   const [finishing, startFinishing] = useTransition();
 
-  // Sections are recomputed from answers, so conditional sections appear and
-  // disappear as the coach answers — e.g. the P&R section only exists once
-  // they say they run ball screens.
-  const sections = useMemo(() => visibleSections(answers), [answers]);
+  // The step list is derived from answers, so conditional sections appear and
+  // disappear live as the coach answers.
+  const steps = useMemo(() => flattenSteps(answers), [answers]);
 
-  const [index, setIndex] = useState(() => {
-    if (!startSection) return 0;
-    const found = visibleSections(initialAnswers).findIndex((s) => s.slug === startSection);
-    return found >= 0 ? found : 0;
+  const [stepId, setStepId] = useState<string>(() => {
+    const initial = flattenSteps(initialAnswers);
+    const found = startStepId && initial.find((s) => s.step.id === startStepId);
+    return found ? found.step.id : (initial[0]?.step.id ?? "");
   });
 
-  const safeIndex = Math.min(index, sections.length - 1);
-  const section = sections[safeIndex];
+  // Resolve by id so the position stays correct even when branching changes
+  // the list length underneath us.
+  const currentIndex = Math.max(
+    0,
+    steps.findIndex((s) => s.step.id === stepId),
+  );
+  const current = steps[currentIndex];
+  const isLast = currentIndex === steps.length - 1;
+
   const questions = useMemo(
-    () => (section ? visibleQuestions(section, answers) : []),
-    [section, answers],
+    () => (current ? visibleQuestions(current.step, answers) : []),
+    [current, answers],
   );
 
-  const isLast = safeIndex === sections.length - 1;
-
-  // Debounced autosave. Each question saves independently so a slow network
-  // never blocks typing, and leaving mid-section keeps whatever was entered.
+  // Debounced autosave, one timer per question so a slow save never blocks typing.
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const queueSave = useCallback(
     (key: string, value: AnswerValue) => {
       const existing = timers.current.get(key);
       if (existing) clearTimeout(existing);
-
       setSaveState("saving");
       const timer = setTimeout(async () => {
         const result = await saveResponse(teamId, key, value.selections, value.customText);
@@ -81,7 +82,6 @@ export function OnboardingFlow({
           setError(result.message);
         }
       }, 600);
-
       timers.current.set(key, timer);
     },
     [teamId],
@@ -89,9 +89,7 @@ export function OnboardingFlow({
 
   useEffect(() => {
     const map = timers.current;
-    return () => {
-      map.forEach((t) => clearTimeout(t));
-    };
+    return () => map.forEach((t) => clearTimeout(t));
   }, []);
 
   function update(key: string, value: AnswerValue) {
@@ -99,13 +97,16 @@ export function OnboardingFlow({
     queueSave(key, value);
   }
 
-  async function goTo(nextIndex: number) {
-    const target = sections[nextIndex];
-    if (!target) return;
-    setIndex(nextIndex);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    await saveSectionProgress(teamId, target.slug);
-  }
+  const go = useCallback(
+    async (targetIndex: number) => {
+      const target = steps[targetIndex];
+      if (!target) return;
+      setStepId(target.step.id);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      await saveStepProgress(teamId, target.step.id);
+    },
+    [steps, teamId],
+  );
 
   function finish() {
     startFinishing(async () => {
@@ -119,23 +120,44 @@ export function OnboardingFlow({
     });
   }
 
-  if (!section) return null;
+  // Keyboard: Enter (or Cmd/Ctrl+Enter inside a textarea) advances.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
+      const target = e.target as HTMLElement | null;
+      const inTextarea = target?.tagName === "TEXTAREA";
+      if (inTextarea && !(e.metaKey || e.ctrlKey)) return;
+      if (target?.tagName === "BUTTON") return;
+      e.preventDefault();
+      if (!isLast) void go(currentIndex + 1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentIndex, isLast, go]);
 
-  const progress = Math.round(((safeIndex + 1) / sections.length) * 100);
+  if (!current) return null;
+
+  const progress = Math.round(((currentIndex + 1) / steps.length) * 100);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-5 py-8 sm:px-8 sm:py-12">
-      {/* Progress */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-            {teamName}
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            {current.section.title}
           </p>
-          <p className="font-mono text-[11.5px] tabular-nums text-faint-foreground">
-            Step {safeIndex + 1} of {sections.length}
+          <p className="shrink-0 font-mono text-[11.5px] tabular-nums text-faint-foreground">
+            {currentIndex + 1} / {steps.length}
           </p>
         </div>
-        <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Onboarding progress">
+        <div
+          className="h-1 overflow-hidden rounded-full bg-surface-3"
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${teamName} playbook progress`}
+        >
           <div
             className="h-full rounded-full bg-primary transition-[width] duration-[var(--duration-slow)] ease-[var(--ease-out)]"
             style={{ width: `${progress}%` }}
@@ -143,23 +165,48 @@ export function OnboardingFlow({
         </div>
       </div>
 
-      {/* Section heading */}
-      <div key={section.slug} className="rr-animate-in flex flex-col gap-2">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-foreground">
-          {section.title}
-        </h1>
-        <p className="max-w-lg text-[14px] leading-relaxed text-muted-foreground">
-          {section.intro}
-        </p>
-      </div>
+      {/* Section intro only on the section's first step, so it doesn't repeat. */}
+      {steps[currentIndex - 1]?.section.slug !== current.section.slug && (
+        <div key={current.section.slug} className="rr-animate-in flex flex-col gap-1.5">
+          <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-foreground">
+            {current.section.title}
+          </h1>
+          <p className="max-w-lg text-[14px] leading-relaxed text-muted-foreground">
+            {current.section.intro}
+          </p>
+        </div>
+      )}
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      {/* Questions */}
-      <div key={`${section.slug}-body`} className="rr-animate-in rr-delay-1 flex flex-col gap-9">
-        {section.slug === "terminology" ? (
+      <div key={current.step.id} className="rr-animate-in flex flex-col gap-8">
+        {current.step.kind === "terminology" && (
           <TerminologyEditor teamId={teamId} initialTerms={initialTerms} />
-        ) : (
+        )}
+
+        {current.step.kind === "coverage" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-[17px] font-semibold leading-snug tracking-tight text-foreground">
+                {current.step.title}
+              </h2>
+              <p className="text-[13px] leading-relaxed text-muted-foreground">
+                {current.step.help}
+              </p>
+            </div>
+            <CoverageMatrix
+              teamId={teamId}
+              phase={current.step.phase}
+              initialRules={initialCoverageRules}
+              onDirty={(state, message) => {
+                setSaveState(state);
+                setError(state === "error" ? (message ?? "Could not save.") : null);
+              }}
+            />
+          </div>
+        )}
+
+        {current.step.kind === "questions" &&
           questions.map((q) => (
             <QuestionField
               key={q.key}
@@ -167,17 +214,15 @@ export function OnboardingFlow({
               value={answers[q.key] ?? EMPTY}
               onChange={(next) => update(q.key, next)}
             />
-          ))
-        )}
+          ))}
       </div>
 
-      {/* Footer nav */}
       <div className="sticky bottom-0 -mx-5 mt-2 flex items-center justify-between gap-3 border-t border-border bg-background/95 px-5 py-4 backdrop-blur sm:-mx-8 sm:px-8">
         <Button
           type="button"
           variant="ghost"
-          onClick={() => goTo(safeIndex - 1)}
-          disabled={safeIndex === 0}
+          onClick={() => go(currentIndex - 1)}
+          disabled={currentIndex === 0}
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
           Back
@@ -211,7 +256,7 @@ export function OnboardingFlow({
             {isEditing ? "Save playbook" : "Finish"}
           </Button>
         ) : (
-          <Button type="button" onClick={() => goTo(safeIndex + 1)}>
+          <Button type="button" onClick={() => go(currentIndex + 1)}>
             Continue
             <ArrowRight className="size-4" aria-hidden="true" />
           </Button>
