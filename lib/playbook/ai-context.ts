@@ -8,17 +8,16 @@ import {
 } from "@/lib/playbook/questions";
 import { getPlaybook, type Playbook, type PlaybookTerm, type CoverageRule } from "@/lib/playbook/queries";
 import { getTeam } from "@/lib/teams/queries";
+import {
+  getTeamKnowledge,
+  readsToPrompt,
+  selectReads,
+  type RetrievedRead,
+  type Situation,
+} from "@/lib/interview/retrieval";
+import type { KnowledgeNode } from "@/lib/interview/types";
 
-/**
- * A basketball situation the film pipeline has detected. Everything is
- * optional: the more that's known, the narrower the retrieved context.
- */
-export type Situation = {
-  phase?: "offense" | "defense";
-  action?: "ball_screen" | "transition" | "post" | "drive_kick" | "half_court" | "off_ball";
-  coverage?: Coverage;
-  clock?: "early" | "late";
-};
+export type { Situation };
 
 export type ContextEntry = { label: string; value: string };
 export type ContextGroup = { heading: string; entries: ContextEntry[] };
@@ -29,6 +28,8 @@ export type TeamBasketballContext = {
   groups: ContextGroup[];
   terminology: PlaybookTerm[];
   coverageRules: CoverageRule[];
+  /** Situation-scoped reads from the AI interview's knowledge graph. */
+  reads: RetrievedRead[];
   /** Provider-agnostic flattening, for whatever model layer sits on top. */
   toPrompt: () => string;
 };
@@ -119,10 +120,33 @@ export async function getTeamBasketballContext(
   teamId: string,
   situation?: Situation,
 ): Promise<TeamBasketballContext | null> {
-  const [team, playbook] = await Promise.all([getTeam(teamId), getPlaybook(teamId)]);
+  return getRelevantTeamBasketballContext({ teamId, situation });
+}
+
+/**
+ * The retrieval entry point for the film pipeline.
+ *
+ * Pulls two layers and merges them: the structured knowledge graph built by
+ * the AI interview (specific, situation-scoped reads) and the questionnaire
+ * answers and coverage matrix from the guided playbook (broad identity and
+ * principles). Both are narrowed to the situation, so a possession where the
+ * defense switched never sees the coach's drop-coverage rules.
+ */
+export async function getRelevantTeamBasketballContext({
+  teamId,
+  situation,
+}: {
+  teamId: string;
+  situation?: Situation;
+}): Promise<TeamBasketballContext | null> {
+  const [team, playbook, knowledge] = await Promise.all([
+    getTeam(teamId),
+    getPlaybook(teamId),
+    getTeamKnowledge(teamId),
+  ]);
   if (!playbook) return null;
 
-  return buildContext(team?.name ?? "Team", playbook, situation ?? null);
+  return buildContext(team?.name ?? "Team", playbook, situation ?? null, knowledge);
 }
 
 /** Pure builder — separated so it can be unit-tested without a database. */
@@ -130,6 +154,7 @@ export function buildContext(
   teamName: string,
   playbook: Playbook,
   situation: Situation | null,
+  knowledge: KnowledgeNode[] = [],
 ): TeamBasketballContext {
   const wanted = tagsForSituation(situation);
   const questions = allQuestions();
@@ -180,6 +205,10 @@ export function buildContext(
   }
   coverageRules = coverageRules.filter((r) => r.reads.length > 0 || r.note);
 
+  // The knowledge graph is scoped by its own matcher, which understands
+  // conditional chains and role scoping the questionnaire never captured.
+  const reads = selectReads(knowledge, situation ?? {});
+
   const toPrompt = () => {
     const lines: string[] = [`TEAM: ${teamName}`];
     if (situation) {
@@ -190,6 +219,12 @@ export function buildContext(
         situation.clock ? `${situation.clock} clock` : null,
       ].filter(Boolean);
       if (bits.length) lines.push(`SITUATION: ${bits.join(", ")}`);
+    }
+
+    // Interview knowledge first: it is the most specific thing ReadRep knows.
+    if (reads.length > 0) {
+      lines.push("", "HOW THIS COACH WANTS IT PLAYED");
+      lines.push(readsToPrompt(reads));
     }
 
     for (const g of groups) {
@@ -230,6 +265,7 @@ export function buildContext(
     groups,
     terminology: playbook.terms,
     coverageRules,
+    reads,
     toPrompt,
   };
 }

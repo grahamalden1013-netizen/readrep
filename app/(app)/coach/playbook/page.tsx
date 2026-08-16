@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
-import { BookOpen, Pencil, Sparkles } from "lucide-react";
+import { MessagesSquare, Pencil, Sparkles } from "lucide-react";
 import { getCurrentProfile } from "@/lib/profile/queries";
 import { getTeam } from "@/lib/teams/queries";
 import { getPlaybook, hasProgress, type CoverageRule } from "@/lib/playbook/queries";
 import { playbookCoverage } from "@/lib/playbook/ai-context";
+import { getInterviewSnapshot } from "@/lib/interview/queries";
+import { toInterviewView, type ReadView } from "@/lib/interview/view";
 import {
   COVERAGE_LABELS,
   ROLE_LABELS,
@@ -75,6 +77,33 @@ function CoverageBlock({ rules, phase }: { rules: CoverageRule[]; phase: "offens
   );
 }
 
+/** One read from the interview's knowledge graph, with its conditional chain. */
+function InterviewRead({ read }: { read: ReadView }) {
+  return (
+    <li className="rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+          {read.scope}
+        </span>
+        <span className="text-[11px] text-faint-foreground">{read.topicLabel}</span>
+      </div>
+      <p className="mt-1.5 text-[13.5px] leading-relaxed text-foreground">
+        <span className="mr-1.5 font-mono text-[11px] text-muted-foreground">{read.priority}.</span>
+        {read.text}
+      </p>
+      {read.children.length > 0 && (
+        <ul className="mt-1.5 flex flex-col gap-1 border-l border-border-strong pl-3">
+          {read.children.map((child) => (
+            <li key={child.id} className="text-[12.5px] leading-relaxed text-muted-foreground">
+              {child.text}
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 function answeredEntries(answers: Answers, sectionSlugs: string[]) {
   const keys = SECTIONS.filter((s) => sectionSlugs.includes(s.slug)).flatMap((s) =>
     s.steps.flatMap((st) => (st.kind === "questions" ? st.questions.map((q) => q.key) : [])),
@@ -105,12 +134,16 @@ export default async function PlaybookPage() {
     redirect("/coach");
   }
 
-  const [team, playbook] = await Promise.all([
+  const [team, playbook, snapshot] = await Promise.all([
     getTeam(profile.team_id),
     getPlaybook(profile.team_id),
+    getInterviewSnapshot(profile.team_id),
   ]);
 
-  if (!playbook || !hasProgress(playbook)) {
+  const interview = snapshot ? toInterviewView(snapshot) : null;
+  const hasInterview = (interview?.knowledgeCount ?? 0) > 0;
+
+  if ((!playbook || !hasProgress(playbook)) && !hasInterview) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8 sm:px-8 sm:py-12">
         <div className="rr-animate-in">
@@ -122,15 +155,29 @@ export default async function PlaybookPage() {
         <div className="rr-animate-in rr-delay-1">
           <EmptyState
             variant="prominent"
-            icon={BookOpen}
-            title="Your playbook is empty"
-            description="It's an interview, not a form — one question at a time, and it adapts to what you actually run. You can stop and pick it up whenever."
-            action={<LinkButton href="/coach/playbook/onboarding">Start the interview</LinkButton>}
+            icon={MessagesSquare}
+            title="ReadRep doesn't know your team yet"
+            description="Talk it through instead of filling in a form. ReadRep asks one question at a time, understands the answer, and asks whatever it still needs. Stop and pick it up whenever."
+            action={<LinkButton href="/coach/playbook/interview">Start the interview</LinkButton>}
           />
         </div>
+        <p className="rr-animate-in rr-delay-2 text-center text-[12.5px] text-muted-foreground">
+          Prefer a structured form?{" "}
+          <a
+            href="/coach/playbook/onboarding"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Use the guided questionnaire
+          </a>
+          .
+        </p>
       </div>
     );
   }
+
+  // Both loaders read the same `team_playbooks` row, so a snapshot without a
+  // playbook is impossible; this keeps the types honest rather than asserting.
+  if (!playbook) redirect("/coach/playbook/interview");
 
   const coverage = playbookCoverage(playbook.answers);
   const steps = flattenSteps(playbook.answers);
@@ -161,10 +208,16 @@ export default async function PlaybookPage() {
           title="Your ReadRep Playbook"
           subtitle={`How ${team?.name ?? "your team"} plays, in ReadRep's words.`}
           actions={
-            <LinkButton href="/coach/playbook/onboarding?edit=1" variant="secondary" size="sm">
-              <Pencil className="size-3.5" aria-hidden="true" />
-              Edit playbook
-            </LinkButton>
+            <div className="flex flex-wrap items-center gap-2">
+              <LinkButton href="/coach/playbook/interview" size="sm">
+                <MessagesSquare className="size-3.5" aria-hidden="true" />
+                {hasInterview ? "Continue the interview" : "Talk it through"}
+              </LinkButton>
+              <LinkButton href="/coach/playbook/onboarding?edit=1" variant="secondary" size="sm">
+                <Pencil className="size-3.5" aria-hidden="true" />
+                Edit answers
+              </LinkButton>
+            </div>
           }
         />
       </div>
@@ -200,6 +253,25 @@ export default async function PlaybookPage() {
             Continue
           </LinkButton>
         </div>
+      )}
+
+      {interview && hasInterview && (
+        <section className="rr-animate-in rr-delay-2 flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
+              From the interview
+            </h2>
+            <span className="text-[12px] text-muted-foreground">
+              {Math.round(interview.overall * 100)}% understood
+              {interview.filmReady && " · film-ready"}
+            </span>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {interview.reads.map((read) => (
+              <InterviewRead key={read.id} read={read} />
+            ))}
+          </ul>
+        </section>
       )}
 
       <div className="rr-animate-in rr-delay-2 flex flex-col gap-8">
