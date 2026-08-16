@@ -63,8 +63,11 @@ function ReadCard({
   return (
     <li className="rr-animate-in rounded-lg border border-border bg-surface px-3.5 py-3">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-          {read.scope}
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+            {read.scope}
+          </span>
+          <span className="text-[11px] text-faint-foreground">{read.topicLabel}</span>
         </p>
         <button
           type="button"

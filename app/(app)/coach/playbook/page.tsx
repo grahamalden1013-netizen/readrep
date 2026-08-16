@@ -244,13 +244,17 @@ export default async function PlaybookPage() {
       {!playbook.completedAt && (
         <div className="rr-animate-in rr-delay-1 flex flex-col gap-3 rounded-lg border border-dashed border-border-strong px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-[13.5px] font-medium text-foreground">Pick up where you left off</p>
+            <p className="text-[13.5px] font-medium text-foreground">
+              {interview && interview.missingCritical.length > 0
+                ? `ReadRep still needs: ${interview.missingCritical.slice(0, 2).join(", ")}`
+                : "Pick up where you left off"}
+            </p>
             <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              You haven&apos;t finished the interview yet.
+              It can&apos;t coach a possession the way you would until it knows these.
             </p>
           </div>
-          <LinkButton href="/coach/playbook/onboarding" size="sm">
-            Continue
+          <LinkButton href="/coach/playbook/interview" size="sm">
+            Keep teaching
           </LinkButton>
         </div>
       )}

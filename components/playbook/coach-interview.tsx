@@ -35,11 +35,13 @@ export function CoachInterview({
   const [isPending, startTransition] = useTransition();
   const [started, setStarted] = useState(initialView.turns.length > 0);
 
-  const endRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Scroll to the composer rather than the last message: it sits below the
+  // conversation, so bringing it into view brings the newest turn with it.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [view.turns.length, pending, isPending]);
 
   const run = (fn: () => Promise<Awaited<ReturnType<typeof sendCoachMessage>>>) => {
@@ -91,7 +93,7 @@ export function CoachInterview({
           </div>
         )}
 
-        <div className="mt-6 flex flex-1 flex-col gap-5">
+        <div className="mt-6 flex flex-col gap-5">
           {!started && view.turns.length === 0 && (
             <div className="rr-animate-in flex flex-col items-start gap-4 rounded-lg border border-dashed border-border-strong px-6 py-8">
               <div className="flex size-9 items-center justify-center rounded-md bg-primary-soft text-primary-soft-foreground">
@@ -172,8 +174,6 @@ export function CoachInterview({
               </li>
             )}
           </ol>
-
-          <div ref={endRef} />
         </div>
 
         {error && (
@@ -185,7 +185,7 @@ export function CoachInterview({
         )}
 
         {(started || view.turns.length > 0) && (
-          <div className="sticky bottom-0 mt-6 bg-background pt-3">
+          <div ref={composerRef} className="mt-6 scroll-mb-6">
             <div className="flex items-end gap-2 rounded-lg border border-border-strong bg-surface px-3 py-2.5 focus-within:border-primary/50">
               <textarea
                 ref={inputRef}

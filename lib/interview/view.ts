@@ -12,6 +12,8 @@ import { PHASE_LABELS, type Phase } from "@/lib/interview/vocabulary";
  * into data, and nothing more.
  */
 
+const PHASE_ORDER: Record<Phase, number> = { team: 0, offense: 1, defense: 2, coaching: 3 };
+
 export type TopicView = {
   id: string;
   label: string;
@@ -76,11 +78,13 @@ export function toInterviewView(snapshot: InterviewSnapshot): InterviewView {
       priority: node.priority,
       children: childrenOf.get(node.id) ?? [],
     }))
-    .sort((a, b) =>
-      a.topicLabel === b.topicLabel
-        ? a.priority - b.priority
-        : a.topicLabel.localeCompare(b.topicLabel),
-    );
+    // Read the way a coach would: team first, then offense, defense, and how
+    // they coach — and within a topic, in the order the reads happen.
+    .sort((a, b) => {
+      if (a.phase !== b.phase) return PHASE_ORDER[a.phase] - PHASE_ORDER[b.phase];
+      if (a.topicLabel !== b.topicLabel) return a.topicLabel.localeCompare(b.topicLabel);
+      return a.priority - b.priority;
+    });
 
   return {
     teamId: snapshot.teamId,
