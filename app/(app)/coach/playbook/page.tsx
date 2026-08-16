@@ -224,10 +224,12 @@ export default async function PlaybookPage() {
           {interview?.readiness.headline ?? "Not started"}
         </Badge>
         {interview && interview.confirmedCount > 0 && (
-          <Badge tone="neutral">{interview.confirmedCount} things you taught it</Badge>
+          <Badge tone="neutral">
+            {interview.confirmedCount} {interview.confirmedCount === 1 ? "thing" : "things"} you taught it
+          </Badge>
         )}
         {interview && interview.inferredCount > 0 && (
-          <Badge tone="neutral">{interview.inferredCount} it worked out</Badge>
+          <Badge tone="neutral">{interview.inferredCount} ReadRep worked out</Badge>
         )}
         {playbook.terms.length > 0 && (
           <Badge tone="primary">
@@ -240,10 +242,10 @@ export default async function PlaybookPage() {
         <div className="rr-animate-in rr-delay-1 flex flex-col gap-3 rounded-lg border border-dashed border-border-strong px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[13.5px] font-medium text-foreground">
-              {interview?.readiness.headline ?? "ReadRep hasn't met your team yet"}
+              {interview?.readiness.reason ?? "ReadRep hasn't met your team yet."}
             </p>
             <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              {interview?.readiness.reason ?? "A few questions and it can start reading your film."}
+              It keeps learning from you — there&apos;s no form to finish.
             </p>
           </div>
           <LinkButton href="/coach/playbook/interview" size="sm">

@@ -60,10 +60,10 @@ export type InterviewView = {
  */
 function toLabel(text: string): string {
   const trimmed = text.trim();
-  if (trimmed.length <= 46) return trimmed;
-  const cut = trimmed.slice(0, 46);
+  if (trimmed.length <= 62) return trimmed;
+  const cut = trimmed.slice(0, 62);
   const brk = Math.max(cut.lastIndexOf(", "), cut.lastIndexOf(" — "), cut.lastIndexOf(" "));
-  return `${cut.slice(0, brk > 20 ? brk : 46).trimEnd()}…`;
+  return `${cut.slice(0, brk > 30 ? brk : 62).trimEnd()}…`;
 }
 
 export function toInterviewView(snapshot: InterviewSnapshot): InterviewView {
