@@ -139,3 +139,98 @@ export async function getSessionForPlayer(
     answered: answered ?? [],
   };
 }
+
+export type ResultClip = {
+  id: string;
+  prompt: string;
+  selected_option: string | null;
+  correct_option: string;
+  is_correct: boolean | null;
+  feedback: string;
+};
+
+export type SessionResults = {
+  id: string;
+  completed_at: string | null;
+  clips: ResultClip[];
+};
+
+type ResultsRow = {
+  id: string;
+  completed_at: string | null;
+  session_clips: {
+    position: number;
+    clips: {
+      id: string;
+      prompt: string;
+      correct_option: string;
+      feedback: string;
+    } | null;
+  }[];
+};
+
+export async function getSessionResults(
+  sessionId: string,
+): Promise<SessionResults | null> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const { data: session, error } = await supabase
+    .from("sessions")
+    .select(
+      "id, completed_at, session_clips(position, clips(id, prompt, correct_option, feedback))",
+    )
+    .eq("id", sessionId)
+    .eq("player_id", user.id)
+    .maybeSingle()
+    .returns<ResultsRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!session) {
+    return null;
+  }
+
+  const { data: predictions, error: predictionsError } = await supabase
+    .from("predictions")
+    .select("clip_id, selected_option, is_correct")
+    .eq("session_id", sessionId)
+    .eq("player_id", user.id);
+
+  if (predictionsError) {
+    throw predictionsError;
+  }
+
+  const predictionByClip = new Map(
+    (predictions ?? []).map((p) => [p.clip_id, p]),
+  );
+
+  const orderedClips = session.session_clips
+    .filter((sc) => sc.clips !== null)
+    .sort((a, b) => a.position - b.position);
+
+  return {
+    id: session.id,
+    completed_at: session.completed_at,
+    clips: orderedClips.map((sc) => {
+      const prediction = predictionByClip.get(sc.clips!.id);
+      return {
+        id: sc.clips!.id,
+        prompt: sc.clips!.prompt,
+        selected_option: prediction?.selected_option ?? null,
+        correct_option: sc.clips!.correct_option,
+        is_correct: prediction?.is_correct ?? null,
+        feedback: sc.clips!.feedback,
+      };
+    }),
+  };
+}

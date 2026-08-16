@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { completeSession, submitPrediction } from "@/app/(app)/sessions/[sessionId]/actions";
 import type { AnsweredClip, PlayerClip } from "@/lib/sessions/queries";
 
@@ -21,13 +22,14 @@ export function SessionPlayer({
   clips: PlayerClip[];
   initialAnswered: AnsweredClip[];
 }) {
+  const router = useRouter();
   const [answered, setAnswered] = useState<Map<string, AnsweredClip>>(
     () => new Map(initialAnswered.map((a) => [a.clip_id, a])),
   );
   const [activeClip, setActiveClip] = useState<PlayerClip | null>(null);
   const [reveal, setReveal] = useState<RevealData | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDone, setIsDone] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -38,9 +40,10 @@ export function SessionPlayer({
   );
 
   const finish = useCallback(async () => {
-    setIsDone(true);
+    setIsFinishing(true);
     await completeSession(sessionId);
-  }, [sessionId]);
+    router.push(`/sessions/${sessionId}/results`);
+  }, [router, sessionId]);
 
   const handleTimeUpdate = () => {
     const video = videoRef.current;
@@ -58,10 +61,10 @@ export function SessionPlayer({
   };
 
   const handleEnded = useCallback(() => {
-    if (!isDone && answered.size >= sortedClips.length) {
+    if (!isFinishing && answered.size >= sortedClips.length) {
       finish();
     }
-  }, [answered.size, finish, isDone, sortedClips.length]);
+  }, [answered.size, finish, isFinishing, sortedClips.length]);
 
   const choose = async (option: string) => {
     if (!activeClip || isSubmitting) return;
@@ -84,6 +87,7 @@ export function SessionPlayer({
   };
 
   const continueAfterReveal = async () => {
+    if (isFinishing) return;
     const isLastClip = answered.size >= sortedClips.length;
     setActiveClip(null);
     setReveal(null);
@@ -95,18 +99,6 @@ export function SessionPlayer({
 
     videoRef.current?.play();
   };
-
-  if (isDone) {
-    const correctCount = [...answered.values()].filter((a) => a.is_correct).length;
-    return (
-      <div className="flex flex-col items-center gap-4 py-16 text-center">
-        <h2 className="text-2xl font-semibold tracking-tight">Session complete</h2>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          {correctCount} / {sortedClips.length} correct
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -169,8 +161,9 @@ export function SessionPlayer({
               )}
               <button
                 type="button"
+                disabled={isFinishing}
                 onClick={continueAfterReveal}
-                className="self-start rounded bg-foreground px-4 py-2 text-sm font-medium text-background"
+                className="self-start rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
               >
                 Continue
               </button>
