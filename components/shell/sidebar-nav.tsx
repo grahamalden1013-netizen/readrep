@@ -3,10 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-import type { NavItem } from "@/lib/nav";
+import { getNavItems } from "@/lib/nav";
+import type { Profile } from "@/types/database";
 
-export function SidebarNav({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+export function SidebarNav({
+  role,
+  onNavigate,
+}: {
+  role: Profile["role"];
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
+  const items = getNavItems(role);
 
   return (
     <nav className="flex flex-col gap-0.5 px-3 py-2">

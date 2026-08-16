@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
-import { getNavItems } from "@/lib/nav";
 import type { Profile } from "@/types/database";
 
 export function Sidebar({ profile, homeHref }: { profile: Profile; homeHref: string }) {
@@ -14,7 +13,7 @@ export function Sidebar({ profile, homeHref }: { profile: Profile; homeHref: str
         </Link>
       </div>
       <div className="flex flex-1 flex-col justify-between overflow-y-auto">
-        <SidebarNav items={getNavItems(profile.role)} />
+        <SidebarNav role={profile.role} />
       </div>
       <UserMenu profile={profile} settingsHref={profile.role === "coach" ? "/coach/settings" : undefined} />
     </aside>
