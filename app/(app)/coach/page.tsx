@@ -1,7 +1,8 @@
-import { CheckCircle2, ClipboardList, Film, Sparkles, Users } from "lucide-react";
+import { BookOpen, CheckCircle2, ClipboardList, Film, Sparkles, Users } from "lucide-react";
 import { getCurrentProfile } from "@/lib/profile/queries";
 import { getRoster, getTeam, getTeamGames } from "@/lib/teams/queries";
 import { getTeamAssignments } from "@/lib/sessions/queries";
+import { getPlaybook, hasProgress } from "@/lib/playbook/queries";
 import { PageHeader } from "@/components/ui/page-header";
 import { LinkButton } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
@@ -15,10 +16,11 @@ export default async function CoachDashboardPage() {
   const profile = await getCurrentProfile();
   if (!profile) return null; // layout already redirects
 
-  const [team, roster, games] = await Promise.all([
+  const [team, roster, games, playbook] = await Promise.all([
     profile.team_id ? getTeam(profile.team_id) : Promise.resolve(null),
     profile.team_id ? getRoster(profile.team_id) : Promise.resolve([]),
     profile.team_id ? getTeamGames(profile.team_id) : Promise.resolve([]),
+    profile.team_id ? getPlaybook(profile.team_id) : Promise.resolve(null),
   ]);
   const assignments = await getTeamAssignments(roster);
 
@@ -33,6 +35,17 @@ export default async function CoachDashboardPage() {
     tone: "warning" | "info";
   }[] = [];
 
+  if (profile.team_id && !playbook?.completedAt) {
+    attention.push({
+      icon: BookOpen,
+      title: hasProgress(playbook) ? "Finish your playbook" : "Teach ReadRep your system",
+      description: hasProgress(playbook)
+        ? "Pick up the interview where you left off."
+        : "ReadRep trains players to make the reads you want — once it knows what those are.",
+      href: "/coach/playbook",
+      tone: "warning",
+    });
+  }
   if (roster.length === 0) {
     attention.push({
       icon: Users,

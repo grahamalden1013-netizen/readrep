@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   ClipboardList,
   Film,
   Home,
@@ -29,6 +30,7 @@ export function getNavItems(role: Profile["role"]): NavItem[] {
       { href: "/coach/review", label: "Review", icon: PlaySquare, soon: true },
       { href: "/coach/assignments", label: "Assignments", icon: ClipboardList },
       { href: "/coach/team", label: "Team", icon: Users },
+      { href: "/coach/playbook", label: "Playbook", icon: BookOpen },
     ];
   }
 
