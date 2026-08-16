@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile, homePathForRole } from "@/lib/profile/queries";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
@@ -15,7 +16,8 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  const profile = await getCurrentProfile();
+  redirect(profile ? homePathForRole(profile.role) : "/dashboard");
 }
 
 export async function signup(formData: FormData) {

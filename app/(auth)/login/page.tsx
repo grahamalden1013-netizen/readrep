@@ -1,5 +1,9 @@
-import Link from "next/link";
 import { login } from "../actions";
+import { LinkButton, Button } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/input";
+import { Alert } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Logo } from "@/components/logo";
 
 export default async function LoginPage({
   searchParams,
@@ -9,50 +13,56 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-16">
-      <form action={login} className="w-full max-w-sm flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Log in</h1>
+    <div className="flex min-h-svh flex-col items-center justify-center px-4 py-16">
+      <div className="w-full max-w-sm rr-animate-in">
+        <div className="mb-8 flex justify-center">
+          <Logo />
+        </div>
 
-        {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        )}
+        <Card>
+          <CardHeader className="flex-col items-start">
+            <CardTitle className="text-[19px]">Welcome back</CardTitle>
+            <CardDescription>Log in to your ReadRep account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={login} className="flex flex-col gap-4">
+              {error && <Alert tone="danger">{error}</Alert>}
 
-        <label className="flex flex-col gap-1 text-sm">
-          Email
-          <input
-            type="email"
-            name="email"
-            required
-            className="rounded border border-zinc-300 px-3 py-2"
-          />
-        </label>
+              <Field label="Email">
+                {(id) => <Input id={id} type="email" name="email" required autoComplete="email" />}
+              </Field>
 
-        <label className="flex flex-col gap-1 text-sm">
-          Password
-          <input
-            type="password"
-            name="password"
-            required
-            className="rounded border border-zinc-300 px-3 py-2"
-          />
-        </label>
+              <Field label="Password">
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    name="password"
+                    required
+                    autoComplete="current-password"
+                  />
+                )}
+              </Field>
 
-        <button
-          type="submit"
-          className="rounded bg-foreground px-4 py-2 text-background font-medium"
-        >
-          Log in
-        </button>
+              <Button type="submit" className="mt-1 w-full">
+                Log in
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-        <p className="text-sm text-zinc-600">
+        <p className="mt-5 text-center text-[13.5px] text-muted-foreground">
           No account?{" "}
-          <Link href="/signup" className="font-medium underline">
+          <LinkButton
+            href="/signup"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-1 py-0 text-primary hover:bg-transparent hover:text-primary-hover"
+          >
             Sign up
-          </Link>
+          </LinkButton>
         </p>
-      </form>
+      </div>
     </div>
   );
 }

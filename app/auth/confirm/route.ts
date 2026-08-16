@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile, homePathForRole } from "@/lib/profile/queries";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -26,7 +27,8 @@ export async function GET(request: NextRequest) {
         await supabase.rpc("join_team_by_code", { code: inviteCode });
       }
 
-      redirect("/dashboard");
+      const profile = await getCurrentProfile();
+      redirect(profile ? homePathForRole(profile.role) : "/dashboard");
     }
   }
 
