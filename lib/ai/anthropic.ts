@@ -170,7 +170,29 @@ function classify(error: unknown): { kind: GenerateFailure["kind"]; message: str
     return { kind: "network", message: "Could not reach the model provider." };
   }
   if (error instanceof Anthropic.APIError) {
-    return { kind: "provider_error", message: `Provider error (${error.status ?? "unknown"}).` };
+    // Anthropic returns account problems as ordinary 400s, so the status alone
+    // is not enough to tell "you're out of credit" from "that model doesn't
+    // exist". Surface the upstream text — it names the actual problem, and it
+    // never contains credentials.
+    const detail = typeof error.message === "string" ? error.message : "";
+    const lower = detail.toLowerCase();
+
+    if (lower.includes("credit balance") || lower.includes("billing")) {
+      return {
+        kind: "provider_error",
+        message: `Anthropic billing: ${detail} Add credit at console.anthropic.com/settings/billing.`,
+      };
+    }
+    if (lower.includes("model") && (lower.includes("not_found") || lower.includes("not found"))) {
+      return {
+        kind: "provider_error",
+        message: `Model "${interviewModel()}" is not available to this account. Set ${MODEL_VAR} to one that is.`,
+      };
+    }
+    return {
+      kind: "provider_error",
+      message: `Anthropic error ${error.status ?? "unknown"}: ${detail || "no detail given"}`,
+    };
   }
   if (error && typeof error === "object" && "issues" in error) {
     return { kind: "invalid_output", message: describeZodError(error as z.ZodError) };

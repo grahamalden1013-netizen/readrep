@@ -10,8 +10,10 @@
     "test": "npm run test:model && npm run test:engine",
     "test:model": "tsx tests/interview-model.test.ts",
     "test:engine": "tsx --conditions=react-server tests/interview-engine.test.ts",
-    "test:live": "tsx --conditions=react-server tests/interview-live.test.ts",
-    "test:sim": "tsx --conditions=react-server tests/interview-sim.test.ts"
+    "test:live": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx tests/interview-live.test.ts",
+    "test:sim": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx tests/interview-sim.test.ts",
+    "setup:ai": "./scripts/set-anthropic-key.sh",
+    "ai:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/ai-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
