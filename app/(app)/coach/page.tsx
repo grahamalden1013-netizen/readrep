@@ -3,13 +3,13 @@ import { getCurrentProfile } from "@/lib/profile/queries";
 import { getRoster, getTeam, getTeamGames } from "@/lib/teams/queries";
 import { getTeamAssignments } from "@/lib/sessions/queries";
 import { PageHeader } from "@/components/ui/page-header";
-import { LinkButton, Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
 import { ActionCard } from "@/components/ui/action-card";
 import { GameRow } from "@/components/ui/game-row";
 import { AssignmentRow } from "@/components/ui/assignment-row";
 import { EmptyState } from "@/components/ui/empty-state";
-import { InviteCodeCard } from "./invite-code-card";
+import { TeamCard } from "@/components/ui/team-card";
 
 export default async function CoachDashboardPage() {
   const profile = await getCurrentProfile();
@@ -22,10 +22,17 @@ export default async function CoachDashboardPage() {
   ]);
   const assignments = await getTeamAssignments(roster);
 
-  const activeAssignments = assignments.filter((a) => !a.completedAt).length;
+  const activeAssignments = assignments.filter((a) => !a.completedAt);
   const firstName = profile.full_name.split(" ")[0] || "Coach";
 
-  const attention: { icon: typeof Users; title: string; description: string; href: string; tone: "warning" | "info" }[] = [];
+  const attention: {
+    icon: typeof Users;
+    title: string;
+    description: string;
+    href: string;
+    tone: "warning" | "info";
+  }[] = [];
+
   if (roster.length === 0) {
     attention.push({
       icon: Users,
@@ -44,11 +51,20 @@ export default async function CoachDashboardPage() {
       tone: "info",
     });
   }
+  for (const a of activeAssignments.slice(0, 2)) {
+    attention.push({
+      icon: ClipboardList,
+      title: `${a.playerName} hasn't finished their assignment`,
+      description: `${a.completedCount} of ${a.readCount} reads done.`,
+      href: "/coach/assignments",
+      tone: "info",
+    });
+  }
 
   const subtitle =
     attention.length === 0
       ? "You're all caught up — nothing needs your attention right now."
-      : `${attention.length} ${attention.length === 1 ? "thing needs" : "things need"} your attention today.`;
+      : "Here's what needs your attention today.";
 
   return (
     <div className="mx-auto flex max-w-[var(--content-max-w)] flex-col gap-8 px-6 py-8 sm:px-8 sm:py-10">
@@ -56,32 +72,38 @@ export default async function CoachDashboardPage() {
         title={`Good afternoon, ${firstName}`}
         subtitle={subtitle}
         actions={
-          <>
-            <Button variant="secondary" size="sm" disabled title="Coming soon">
-              Review clips
-            </Button>
-            <Button variant="secondary" size="sm" disabled title="Coming soon">
-              Create assignment
-            </Button>
-            <Button size="sm" disabled title="Coming soon">
+          profile.team_id ? (
+            <LinkButton href="/coach/games/new" size="sm">
               Upload game
-            </Button>
-          </>
+            </LinkButton>
+          ) : undefined
         }
       />
 
-      {team?.invite_code && <InviteCodeCard code={team.invite_code} />}
+      {team && profile.team_id && (
+        <TeamCard name={team.name} playerCount={roster.length} inviteCode={team.invite_code ?? ""} />
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Games" value={games.length} icon={Film} />
-        <StatCard label="Players" value={roster.length} icon={Users} />
+        <StatCard label="Games" value={games.length} hint={team ? team.name : undefined} icon={Film} />
+        <StatCard
+          label="Players"
+          value={roster.length}
+          hint={roster.length === 0 ? "Invite your first player" : team?.name}
+          icon={Users}
+        />
         <StatCard
           label="Pending reviews"
           value={0}
-          hint="No clips need review yet"
+          hint="No clips waiting — you're caught up"
           icon={Sparkles}
         />
-        <StatCard label="Active assignments" value={activeAssignments} icon={ClipboardList} />
+        <StatCard
+          label="Active assignments"
+          value={activeAssignments.length}
+          hint={activeAssignments.length === 0 ? "Nothing in progress" : "In progress"}
+          icon={ClipboardList}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
@@ -90,21 +112,23 @@ export default async function CoachDashboardPage() {
             <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
               Recent games
             </h2>
-            <LinkButton href="/coach/games" variant="ghost" size="sm">
-              View all
-            </LinkButton>
+            {games.length > 0 && (
+              <LinkButton href="/coach/games" variant="ghost" size="sm">
+                View all
+              </LinkButton>
+            )}
           </div>
 
           {games.length === 0 ? (
             <EmptyState
               variant="prominent"
               icon={Film}
-              title="No games yet"
-              description="Upload a game and ReadRep will turn the best decision moments into short learning assignments."
+              title="Turn your next game into a learning session"
+              description="Upload a full game and ReadRep will help turn the clearest decision moments into short personalized film assignments."
               action={
-                <Button disabled title="Coming soon">
-                  Upload your first game
-                </Button>
+                profile.team_id ? (
+                  <LinkButton href="/coach/games/new">Upload your first game</LinkButton>
+                ) : undefined
               }
             />
           ) : (
@@ -126,7 +150,12 @@ export default async function CoachDashboardPage() {
             Needs attention
           </h2>
           {attention.length === 0 ? (
-            <ActionCard icon={CheckCircle2} title="All caught up" description="Nothing pending right now." tone="neutral" />
+            <ActionCard
+              icon={CheckCircle2}
+              title="You're all caught up"
+              description="No clips or assignments need your attention."
+              tone="neutral"
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {attention.map((item) => (
@@ -142,9 +171,11 @@ export default async function CoachDashboardPage() {
           <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
             Recent assignments
           </h2>
-          <LinkButton href="/coach/assignments" variant="ghost" size="sm">
-            View all
-          </LinkButton>
+          {assignments.length > 0 && (
+            <LinkButton href="/coach/assignments" variant="ghost" size="sm">
+              View all
+            </LinkButton>
+          )}
         </div>
 
         {assignments.length === 0 ? (

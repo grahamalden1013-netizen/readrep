@@ -6,6 +6,7 @@ import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
+import { IconButton } from "@/components/ui/icon-button";
 import { getNavItems } from "@/lib/nav";
 import type { Profile } from "@/types/database";
 
@@ -25,14 +26,9 @@ export function MobileNav({ profile, homeHref }: { profile: Profile; homeHref: s
       <Link href={homeHref}>
         <Logo />
       </Link>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-        aria-label="Open menu"
-      >
+      <IconButton label="Open menu" onClick={() => setOpen(true)}>
         <Menu className="size-4.5" aria-hidden="true" />
-      </button>
+      </IconButton>
 
       <dialog
         ref={ref}
@@ -45,19 +41,14 @@ export function MobileNav({ profile, homeHref }: { profile: Profile; homeHref: s
       >
         <div className="flex h-[var(--shell-topbar-h)] items-center justify-between px-5">
           <Logo />
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="flex size-7 items-center justify-center rounded-md text-faint-foreground hover:bg-surface-2 hover:text-foreground"
-            aria-label="Close menu"
-          >
+          <IconButton label="Close menu" onClick={() => setOpen(false)}>
             <X className="size-4" aria-hidden="true" />
-          </button>
+          </IconButton>
         </div>
         <div className="flex flex-1 flex-col justify-between overflow-y-auto">
           <SidebarNav items={getNavItems(profile.role)} onNavigate={() => setOpen(false)} />
         </div>
-        <UserMenu profile={profile} />
+        <UserMenu profile={profile} settingsHref={profile.role === "coach" ? "/coach/settings" : undefined} />
       </dialog>
     </div>
   );

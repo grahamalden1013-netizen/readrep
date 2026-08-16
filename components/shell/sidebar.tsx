@@ -16,7 +16,7 @@ export function Sidebar({ profile, homeHref }: { profile: Profile; homeHref: str
       <div className="flex flex-1 flex-col justify-between overflow-y-auto">
         <SidebarNav items={getNavItems(profile.role)} />
       </div>
-      <UserMenu profile={profile} />
+      <UserMenu profile={profile} settingsHref={profile.role === "coach" ? "/coach/settings" : undefined} />
     </aside>
   );
 }

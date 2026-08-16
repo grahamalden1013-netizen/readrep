@@ -2,7 +2,7 @@ import { Film } from "lucide-react";
 import { getCurrentProfile } from "@/lib/profile/queries";
 import { getTeamGames } from "@/lib/teams/queries";
 import { PageHeader } from "@/components/ui/page-header";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GameRow } from "@/components/ui/game-row";
 
@@ -17,24 +17,16 @@ export default async function GamesPage() {
       <PageHeader
         title="Games"
         subtitle="Every game uploaded for your team, and how many usable moments ReadRep found in each."
-        actions={
-          <Button size="sm" disabled title="Coming soon">
-            Upload game
-          </Button>
-        }
+        actions={<LinkButton href="/coach/games/new" size="sm">Upload game</LinkButton>}
       />
 
       {games.length === 0 ? (
         <EmptyState
           variant="prominent"
           icon={Film}
-          title="No games yet"
-          description="Upload a game and ReadRep will turn the best decision moments into short learning assignments."
-          action={
-            <Button disabled title="Coming soon">
-              Upload your first game
-            </Button>
-          }
+          title="Turn your next game into a learning session"
+          description="Upload a full game and ReadRep will help turn the clearest decision moments into short personalized film assignments."
+          action={<LinkButton href="/coach/games/new">Upload your first game</LinkButton>}
         />
       ) : (
         <div className="flex flex-col gap-2">

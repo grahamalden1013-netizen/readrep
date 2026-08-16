@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { IconButton } from "@/components/ui/icon-button";
 
 /**
  * Built on the native <dialog> element: free focus trap, Escape-to-close,
@@ -54,14 +55,9 @@ export function Modal({
             <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-faint-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
-          aria-label="Close"
-        >
+        <IconButton label="Close" size="sm" onClick={onClose} className="shrink-0">
           <X className="size-4" aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
       <div className="px-6 py-5">{children}</div>
     </dialog>
