@@ -9,7 +9,15 @@ import { UserMenu } from "@/components/shell/user-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import type { Profile } from "@/types/database";
 
-export function MobileNav({ profile, homeHref }: { profile: Profile; homeHref: string }) {
+export function MobileNav({
+  profile,
+  teamName,
+  homeHref,
+}: {
+  profile: Profile;
+  teamName?: string | null;
+  homeHref: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -47,7 +55,7 @@ export function MobileNav({ profile, homeHref }: { profile: Profile; homeHref: s
         <div className="flex flex-1 flex-col justify-between overflow-y-auto">
           <SidebarNav role={profile.role} onNavigate={() => setOpen(false)} />
         </div>
-        <UserMenu profile={profile} settingsHref={profile.role === "coach" ? "/coach/settings" : undefined} />
+        <UserMenu profile={profile} teamName={teamName} settingsHref={profile.role === "coach" ? "/coach/settings" : undefined} />
       </dialog>
     </div>
   );

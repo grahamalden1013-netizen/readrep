@@ -8,7 +8,8 @@ type ButtonSize = "sm" | "md" | "lg";
 
 const base =
   "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium " +
-  "transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] " +
+  "transition-[color,background-color,border-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-out)] " +
+  "active:scale-[0.98] motion-reduce:active:scale-100 " +
   "disabled:pointer-events-none disabled:opacity-50 select-none";
 
 const variants: Record<ButtonVariant, string> = {

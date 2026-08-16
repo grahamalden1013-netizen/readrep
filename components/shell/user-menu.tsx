@@ -3,7 +3,15 @@ import { logout } from "@/app/(auth)/actions";
 import { IconButton, IconLinkButton } from "@/components/ui/icon-button";
 import type { Profile } from "@/types/database";
 
-export function UserMenu({ profile, settingsHref }: { profile: Profile; settingsHref?: string }) {
+export function UserMenu({
+  profile,
+  teamName,
+  settingsHref,
+}: {
+  profile: Profile;
+  teamName?: string | null;
+  settingsHref?: string;
+}) {
   return (
     <div className="flex items-center gap-2 border-t border-border px-4 py-3">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[12px] font-semibold text-foreground">
@@ -13,7 +21,9 @@ export function UserMenu({ profile, settingsHref }: { profile: Profile; settings
         <p className="truncate text-[13px] font-medium text-foreground">
           {profile.full_name || "Unnamed"}
         </p>
-        <p className="truncate text-[11.5px] capitalize text-faint-foreground">{profile.role}</p>
+        <p className="truncate text-[11.5px] text-faint-foreground">
+          {teamName ?? <span className="capitalize">{profile.role}</span>}
+        </p>
       </div>
       {settingsHref && (
         <IconLinkButton href={settingsHref} label="Settings" size="sm">

@@ -23,7 +23,7 @@ export function GameRow({
   thumbnailUrl?: string;
 }) {
   return (
-    <div className="flex items-center gap-3.5 rounded-lg border border-border bg-surface px-4 py-3">
+    <div className="flex items-center gap-3.5 rounded-lg border border-border bg-surface px-4 py-3 transition-colors duration-[var(--duration-fast)] hover:border-border-strong">
       <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-2 text-faint-foreground">
         {thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element

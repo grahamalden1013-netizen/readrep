@@ -195,6 +195,23 @@ body {
   animation: rr-fade-in var(--duration-slow) var(--ease-out) both;
 }
 
+/* Staggered page-load entrance — apply alongside .rr-animate-in */
+.rr-delay-1 { animation-delay: 60ms; }
+.rr-delay-2 { animation-delay: 120ms; }
+.rr-delay-3 { animation-delay: 180ms; }
+
+/* Film-timeline motif: faint frame ticks, like a scrubber ruler.
+   Brand atmosphere for film study — used sparingly (hero card, session UI). */
+.rr-ticks {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--border-strong) 0,
+    var(--border-strong) 1px,
+    transparent 1px,
+    transparent 9px
+  );
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rr-animate-in { animation: none; }
 }

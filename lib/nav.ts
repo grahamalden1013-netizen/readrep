@@ -32,5 +32,8 @@ export function getNavItems(role: Profile["role"]): NavItem[] {
     ];
   }
 
-  return [{ href: "/dashboard", label: "Home", icon: Home }];
+  return [
+    { href: "/dashboard", label: "Home", icon: Home },
+    { href: "/sessions", label: "Sessions", icon: Film },
+  ];
 }

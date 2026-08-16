@@ -68,23 +68,27 @@ export default async function CoachDashboardPage() {
 
   return (
     <div className="mx-auto flex max-w-[var(--content-max-w)] flex-col gap-8 px-6 py-8 sm:px-8 sm:py-10">
-      <PageHeader
-        title={`Good afternoon, ${firstName}`}
-        subtitle={subtitle}
-        actions={
-          profile.team_id ? (
-            <LinkButton href="/coach/games/new" size="sm">
-              Upload game
-            </LinkButton>
-          ) : undefined
-        }
-      />
+      <div className="rr-animate-in">
+        <PageHeader
+          title={`Good afternoon, ${firstName}`}
+          subtitle={subtitle}
+          actions={
+            profile.team_id ? (
+              <LinkButton href="/coach/games/new" size="sm">
+                Upload game
+              </LinkButton>
+            ) : undefined
+          }
+        />
+      </div>
 
       {team && profile.team_id && (
-        <TeamCard name={team.name} playerCount={roster.length} inviteCode={team.invite_code ?? ""} />
+        <div className="rr-animate-in rr-delay-1">
+          <TeamCard name={team.name} playerCount={roster.length} inviteCode={team.invite_code ?? ""} />
+        </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="rr-animate-in rr-delay-1 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Games" value={games.length} hint={team ? team.name : undefined} icon={Film} />
         <StatCard
           label="Players"
@@ -106,7 +110,7 @@ export default async function CoachDashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="rr-animate-in rr-delay-2 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
@@ -166,7 +170,7 @@ export default async function CoachDashboardPage() {
         </section>
       </div>
 
-      <section className="flex flex-col gap-3">
+      <section className="rr-animate-in rr-delay-3 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint-foreground">
             Recent assignments
