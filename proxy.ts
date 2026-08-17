@@ -1,10 +1,36 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function proxy(request: NextRequest) {
-  return updateSession(request);
+/**
+ * Optimistic redirect for signed-out visitors.
+ *
+ * This is a UX shortcut only — it checks for the presence of a session cookie,
+ * not its validity. Real authorization happens in `requireUser()` on every
+ * page and Server Action.
+ */
+const PROTECTED_PREFIXES = ["/dashboard", "/settings"];
+
+const SESSION_COOKIES = [
+  "better-auth.session_token",
+  "__Secure-better-auth.session_token",
+];
+
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  const isProtected = PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+  if (!isProtected) return NextResponse.next();
+
+  const hasSessionCookie = SESSION_COOKIES.some((name) =>
+    request.cookies.has(name),
+  );
+  if (hasSessionCookie) return NextResponse.next();
+
+  const signInUrl = new URL("/sign-in", request.url);
+  return NextResponse.redirect(signInUrl);
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/dashboard/:path*", "/settings/:path*"],
 };

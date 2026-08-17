@@ -1,0 +1,264 @@
+// Homework & Assignment Agent — data model.
+//
+// Google Calendar is the source of truth for assignments; everything we own
+// locally (status, priority, study sessions) lives here and is never written
+// back to Google.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth (Better Auth core tables + our own user fields)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// IANA timezone, e.g. "America/New_York". Drives every date boundary.
+  timezone String @default("America/New_York")
+
+  /// Planner preferences (see lib/preferences.ts for the shape + defaults).
+  preferences Json @default("{}")
+
+  sessions        Session[]
+  accounts        Account[]
+  calendarSources CalendarSource[]
+  assignments     Assignment[]
+  studySessions   StudySession[]
+  busyBlocks      BusyBlock[]
+  chatMessages    ChatMessage[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ---------------------------------------------------------------------------
+// Calendars
+// ---------------------------------------------------------------------------
+
+/// How a selected Google calendar is used by the planner.
+enum CalendarSourceType {
+  /// Assignments are parsed out of this calendar (the Schoology feed).
+  SCHOOL
+  /// Events here only mark the user as unavailable.
+  BUSY
+}
+
+model CalendarSource {
+  id               String             @id @default(cuid())
+  userId           String
+  googleCalendarId String
+  name             String
+  type             CalendarSourceType
+  /// Google's opaque incremental-sync token for this calendar.
+  syncToken        String?
+  lastSyncedAt     DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+  busyBlocks  BusyBlock[]
+
+  @@unique([userId, googleCalendarId])
+  @@index([userId])
+  @@map("calendar_sources")
+}
+
+// ---------------------------------------------------------------------------
+// Assignments
+// ---------------------------------------------------------------------------
+
+enum AssignmentType {
+  MAJOR_ASSESSMENT
+  QUIZ
+  HOMEWORK
+  CLASSWORK
+  PROJECT
+  SCHOOL_EVENT
+}
+
+enum AssignmentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+  SKIPPED
+}
+
+model Assignment {
+  id       String @id @default(cuid())
+  userId   String
+  /// Stable Google Calendar event id — the deduplication key.
+  googleEventId String
+  calendarId    String
+
+  title       String
+  description String?
+  sourceUrl   String?
+  /// Course name when we can infer one from the title or calendar.
+  course      String?
+
+  assignmentType AssignmentType
+  dueAt          DateTime
+  /// True when the Google event was all-day (no meaningful time component).
+  allDay         Boolean @default(false)
+
+  estimatedMinutes Int
+  priorityScore    Float            @default(0)
+  status           AssignmentStatus @default(NOT_STARTED)
+
+  /// Set when the event disappears from the Schoology feed; we keep the row so
+  /// local status is never silently destroyed.
+  removedFromSourceAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendar      CalendarSource @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  studySessions StudySession[]
+
+  @@unique([userId, googleEventId])
+  @@index([userId, dueAt])
+  @@index([userId, status])
+  @@map("assignments")
+}
+
+// ---------------------------------------------------------------------------
+// Planning
+// ---------------------------------------------------------------------------
+
+enum StudySessionStatus {
+  PLANNED
+  COMPLETED
+  SKIPPED
+}
+
+/// Why the planner scheduled a block: finishing work vs. spaced test prep.
+enum StudySessionKind {
+  WORK
+  TEST_PREP
+}
+
+model StudySession {
+  id           String             @id @default(cuid())
+  userId       String
+  assignmentId String
+  startAt      DateTime
+  endAt        DateTime
+  status       StudySessionStatus @default(PLANNED)
+  kind         StudySessionKind   @default(WORK)
+  /// Short human-readable goal, e.g. "45 min on weak topics".
+  focus        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startAt])
+  @@index([assignmentId])
+  @@map("study_sessions")
+}
+
+/// A cached busy window pulled from the user's non-school calendars. Read-only
+/// mirror of Google; safe to delete and re-sync at any time.
+model BusyBlock {
+  id            String   @id @default(cuid())
+  userId        String
+  calendarId    String
+  googleEventId String
+  title         String?
+  startAt       DateTime
+  endAt         DateTime
+  allDay        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendar CalendarSource @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleEventId])
+  @@index([userId, startAt])
+  @@map("busy_blocks")
+}
+
+// ---------------------------------------------------------------------------
+// Study Coach
+// ---------------------------------------------------------------------------
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("chat_messages")
+}
