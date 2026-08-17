@@ -314,13 +314,18 @@ async function main() {
     };
 
     const skipped = skippedAreas(snap).map((a) => a.area.id);
-    for (const id of ["offense.identity", "offense.actions", "offense.ball_screen_reads", "offense.shot_selection"]) {
+    // Areas the answer covered fully are closed for good.
+    for (const id of ["offense.identity", "offense.actions"]) {
       assert(skipped.includes(id), `${id} is not asked about again`);
     }
+
+    // Areas it touched once stay open for a DEEPER question — "what changes
+    // when the help commits" is a follow-up, not a repeat — but they rank
+    // below the areas ReadRep knows nothing about.
     const open = rankedQuestions(snap).map((a) => a.area.id);
     assert(
-      open.includes("defense.identity") || open.includes("program.priorities"),
-      "and the next question moves to something genuinely unknown",
+      ["defense.identity", "program.priorities"].includes(open[0]),
+      `the next question goes to something genuinely unknown, not ${open[0]}`,
     );
   });
 
@@ -503,14 +508,26 @@ async function main() {
       "film_ready",
       "ready without the gap",
     );
+    // A gap only blocks in a core area ReadRep knows NOTHING about — once
+    // there is a confirmed fact, a residual question is something to learn
+    // later rather than a reason to refuse film.
     assert(
       calculateFilmReadiness({
         knowledge,
         areaStates: [],
         unknowns: [unknown({ areaId: "offense.principles", importance: 0.85 })],
         turns,
+      }).status === "film_ready",
+      "a gap in an area we already understand does not hold it back",
+    );
+    assert(
+      calculateFilmReadiness({
+        knowledge: knowledge.filter((k) => k.areaId !== "offense.principles"),
+        areaStates: [],
+        unknowns: [unknown({ areaId: "offense.principles", importance: 0.85 })],
+        turns,
       }).status !== "film_ready",
-      "a gap that matters holds it back",
+      "but a gap in an empty core area does",
     );
   });
 

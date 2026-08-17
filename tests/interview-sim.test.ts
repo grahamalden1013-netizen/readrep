@@ -1,19 +1,21 @@
 /**
- * Simulated interview evaluations.
+ * Simulated interview evaluations, against the real model.
  *
- * Drives the real engine through a full interview for five different coaches
- * and reports what it cost each one: questions asked, facts confirmed, facts
- * inferred, gaps left open, questions ReadRep refused to ask because the coach
- * had already answered them, and the readiness it reached.
+ * TWO MODES, because this costs real money.
  *
- * This REQUIRES a real API key. Running it against a scripted mock would only
- * measure a script I wrote, which tells us nothing about whether the interview
- * is smart. Without a key it refuses to run rather than print numbers that
- * don't mean anything.
+ *   npm run test:sim:quick   two coaches, 10 turns each, ~22 calls
+ *   npm run test:sim         all five coaches, ~100+ calls
  *
- *   ANTHROPIC_API_KEY=… npm run test:sim
+ * Use quick for tuning. The full run is for when you deliberately want a
+ * broad evaluation — it is the one that burned through the credits.
  *
- * Nothing is written to the database — the whole run happens in memory.
+ * Most tuning questions do not need this at all: `npm run test:readiness`
+ * walks the same interview deterministically, for free, and is where the
+ * question-count targets are actually pinned.
+ *
+ * This REQUIRES a real API key. Running it against a mock would measure a
+ * script rather than the interview, so without a key it refuses rather than
+ * printing numbers that mean nothing. Nothing is written to the database.
  */
 
 import { providerMode, interviewModel } from "@/lib/ai/anthropic";
@@ -25,8 +27,20 @@ import { applyTurn, emptyRun } from "./sim-state";
 
 delete process.env.READREP_AI_MODE;
 
-/** A hard stop, so a runaway interview can't bill forever. */
-const MAX_QUESTIONS = 25;
+const QUICK = process.argv.includes("--quick") || process.env.READREP_SIM_MODE === "quick";
+
+/**
+ * Hard caps, so a runaway interview cannot bill forever. Quick mode is sized
+ * to answer "did the tuning work?" — a detailed coach should finish well
+ * inside it, and a terse one hitting the cap is itself the signal.
+ */
+const MAX_QUESTIONS = QUICK ? 10 : 22;
+
+/** Quick mode contrasts the two coaches whose behaviour should differ most. */
+const QUICK_COACH_IDS = ["A", "B"];
+
+/** Every provider call in this process, so the cost is never a surprise. */
+let apiCalls = 0;
 
 type Report = {
   coach: string;
@@ -48,6 +62,7 @@ async function interview(coach: Coach): Promise<Report> {
   let endedBecause = `hit the ${MAX_QUESTIONS}-question cap`;
 
   // Opening turn: no coach message.
+  apiCalls += 1;
   let result = await runInterviewTurn(snapshot, null);
   if (!result.ok) throw new Error(`${coach.name}: opening turn failed — ${result.message}`);
   snapshot = applyTurn(snapshot, null, result.turn);
@@ -57,6 +72,7 @@ async function interview(coach: Coach): Promise<Report> {
     const answer = answerFor(coach, question);
     transcript.push({ q: question, a: answer });
 
+    apiCalls += 1;
     result = await runInterviewTurn(snapshot, answer);
     if (!result.ok) throw new Error(`${coach.name}: turn ${i + 2} failed — ${result.message}`);
 
@@ -97,13 +113,18 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\nCoach interview evaluation`);
+  const coaches = QUICK ? COACHES.filter((c) => QUICK_COACH_IDS.includes(c.id)) : COACHES;
+
+  console.log(`\nCoach interview evaluation${QUICK ? " (QUICK)" : ""}`);
   console.log(`  provider: anthropic`);
   console.log(`  model:    ${interviewModel()}`);
-  console.log(`  prompt:   ${PROMPT_VERSION}\n`);
+  console.log(`  prompt:   ${PROMPT_VERSION}`);
+  console.log(`  coaches:  ${coaches.map((c) => c.id).join(", ")}`);
+  console.log(`  cap:      ${MAX_QUESTIONS} questions each`);
+  console.log(`  worst-case calls: ${coaches.length * (MAX_QUESTIONS + 1)}\n`);
 
   const reports: Report[] = [];
-  for (const coach of COACHES) {
+  for (const coach of coaches) {
     process.stdout.write(`  running ${coach.name}… `);
     const report = await interview(coach);
     reports.push(report);
@@ -153,14 +174,14 @@ async function main() {
   console.log("\n" + "=".repeat(78));
   const failures: string[] = [];
 
-  const byId = new Map(reports.map((r, i) => [COACHES[i].id, r]));
+  const byId = new Map(reports.map((r, i) => [coaches[i].id, r]));
 
   const a = byId.get("A")!;
   const b = byId.get("B")!;
-  const c = byId.get("C")!;
-  const d = byId.get("D")!;
+  const c = byId.get("C");
+  const d = byId.get("D");
 
-  if (a.questions > b.questions) {
+  if (a.questions < b.questions) {
     console.log(`ok   a detailed coach finishes faster than a terse one (${a.questions} vs ${b.questions})`);
   } else {
     failures.push(`Coach A (${a.questions}) should need fewer questions than Coach B (${b.questions})`);
@@ -174,23 +195,30 @@ async function main() {
     }
   }
 
-  if (c.transcript.every((t) => !/vs drop|pick and roll|ball screen coverage/i.test(t.q))) {
-    console.log("ok   the post team was never dragged through a pick-and-roll interview");
+  // The headline target: a detailed coach should be readable quickly.
+  if (a.questions <= 12 && a.readiness === "film_ready") {
+    console.log(`ok   the detailed coach was film-ready in ${a.questions} questions`);
   } else {
-    failures.push("Coach C was asked about ball screens despite barely using them");
+    failures.push(
+      `Coach A took ${a.questions} questions and reached "${a.readiness}" — target is film-ready within 12`,
+    );
   }
 
-  if (d.transcript.some((t) => /zone|short corner|high post/i.test(t.q))) {
-    console.log("ok   the zone team was asked about its zone");
-  } else {
-    failures.push("Coach D was never asked about zone principles");
+  if (c && d) {
+    if (c.transcript.every((t) => !/vs drop|pick and roll|ball screen coverage/i.test(t.q))) {
+      console.log("ok   the post team was never dragged through a pick-and-roll interview");
+    } else {
+      failures.push("Coach C was asked about ball screens despite barely using them");
+    }
+
+    if (d.transcript.some((t) => /zone|short corner|high post/i.test(t.q))) {
+      console.log("ok   the zone team was asked about its zone");
+    } else {
+      failures.push("Coach D was never asked about zone principles");
+    }
   }
 
-  if (reports.every((r) => r.questions <= 20)) {
-    console.log("ok   every coach finished in 20 questions or fewer");
-  } else {
-    failures.push("Some coach needed more than 20 questions");
-  }
+  console.log(`\n${apiCalls} Anthropic calls made.`);
 
   if (failures.length > 0) {
     console.log("\nFAILURES");

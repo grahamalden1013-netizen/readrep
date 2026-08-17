@@ -1,4 +1,11 @@
-import { assessAreas, calculateFilmReadiness, rankedQuestions, shouldEndOnboarding } from "@/lib/interview/gain";
+import {
+  SOFT_STOP_ANSWERS,
+  assessAreas,
+  calculateFilmReadiness,
+  rankedQuestions,
+  shouldEndOnboarding,
+  substantiveAnswers,
+} from "@/lib/interview/gain";
 import { describeNode, describeScope } from "@/lib/interview/normalize";
 import type { InterviewSnapshot } from "@/lib/interview/types";
 import { ACTIONS, CLOCKS, COVERAGES, ROLES } from "@/lib/interview/vocabulary";
@@ -76,7 +83,11 @@ UNKNOWNS
 Record only gaps that would genuinely change a film read — not every empty field. Set resolved true, with the gap's exact question text, when an answer closes one.
 
 STOPPING
-should_end_onboarding is true when you can already read this team's film usefully. Don't keep going because obscure areas are empty — ReadRep keeps learning from film and from the coach later. Eight good questions beats thirty.`;
+should_end_onboarding is true when you can already read this team's film usefully.
+
+ReadRep's bar is deliberately not a complete playbook: offensive and defensive identity, the principles and actions this team actually runs, a few real decision rules, and what the coach corrects. Transition detail, late-clock rules and terminology are all useful and NONE of them are required.
+
+Once ReadRep tells you below that it has what it needs, stop. Past roughly ten real answers, a question has to be genuinely high-value to be worth asking — if the best thing left is a refinement, end the interview instead. The coach can keep teaching ReadRep any time, and it goes on learning from film. Eight good questions beats thirty.`;
 
 /**
  * The situation vocabulary, in prose rather than in the schema.
@@ -175,12 +186,14 @@ function stateBlock(snapshot: InterviewSnapshot): string {
 
   const readiness = calculateFilmReadiness(snapshot);
   const ending = shouldEndOnboarding(snapshot);
+  const answers = substantiveAnswers(snapshot.turns);
   lines.push(
     "",
     "READREP'S OWN READ ON READINESS (computed from stored facts, not your report)",
     `  status: ${readiness.status} — ${readiness.reason}`,
-    `  ${ending.end ? "ReadRep believes it has enough." : ending.reason}`,
+    `  ${ending.end ? "ReadRep believes it has enough — set should_end_onboarding." : ending.reason}`,
     `  questions asked so far: ${snapshot.turns.filter((t) => t.role === "assistant").length}`,
+    `  substantive answers so far: ${answers}${answers >= SOFT_STOP_ANSWERS ? " (past the soft stop — only ask something high-value, otherwise end)" : ""}`,
   );
 
   return lines.join("\n");

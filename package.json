@@ -7,13 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npm run test:model && npm run test:engine",
+    "test": "npm run test:model && npm run test:readiness && npm run test:engine",
     "test:model": "tsx tests/interview-model.test.ts",
     "test:engine": "tsx --conditions=react-server tests/interview-engine.test.ts",
     "test:live": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx tests/interview-live.test.ts",
     "test:sim": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx tests/interview-sim.test.ts",
     "setup:ai": "./scripts/set-anthropic-key.sh",
-    "ai:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/ai-check.ts"
+    "ai:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/ai-check.ts",
+    "test:readiness": "tsx tests/interview-readiness.test.ts",
+    "test:sim:quick": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx tests/interview-sim.test.ts --quick"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

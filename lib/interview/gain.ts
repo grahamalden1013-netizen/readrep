@@ -26,6 +26,8 @@ export type Redundancy = {
 
 export type AreaAssessment = {
   area: Area;
+  /** True when this area gates film-readiness for this team. */
+  core: boolean;
   /** 0-1, adaptive to this team's system. */
   relevance: number;
   /** 0-1 from confirmed knowledge, capped by how much is actually stored. */
@@ -58,18 +60,69 @@ export const SKIP_REDUNDANCY = 0.7;
 /** An area must be worth at least this much to be asked about at all. */
 const BASE_THRESHOLD = 0.12;
 
-/** How much more a question must be worth per question already asked. */
-const FATIGUE_PER_QUESTION = 0.018;
+/**
+ * How much more a question must be worth per question already asked.
+ *
+ * Steep on purpose. The first version rose by 0.018 to a ceiling of 0.34 —
+ * which was below the floor gain of every single area (the cheapest,
+ * `program.language`, is 0.40). No area could ever age out, so the interview
+ * could only end by reaching film-ready, and ran to its cap instead. The
+ * ceiling now sits above the low-value areas so they genuinely drop away.
+ */
+const FATIGUE_PER_QUESTION = 0.045;
 
-const MAX_THRESHOLD = 0.34;
+const MAX_THRESHOLD = 0.62;
+
+/**
+ * After this many substantive answers, having covered what matters is enough.
+ * Past this point ReadRep would rather start reading film than keep asking.
+ */
+export const SOFT_STOP_ANSWERS = 10;
 
 /** Relevance below this means the area does not apply to this team. */
 export const RELEVANT_ENOUGH = 0.25;
 
 /**
+ * Core areas: what ReadRep must understand before it can read a possession.
+ *
+ * Offensive and defensive identity, the principles and actions this team
+ * actually runs, a few decision rules, and what the coach corrects. NOT a
+ * complete playbook — transition detail, late-clock rules and terminology are
+ * all genuinely useful and none of them gate readiness.
+ *
+ * Readiness is scored over this set alone. Scoring it over every applicable
+ * area punished ReadRep for the low-value questions it had correctly decided
+ * not to ask: a coach who had explained everything that matters still scored
+ * 0.34 against a 0.55 bar, because eight areas nobody should ask about sat at
+ * zero in the denominator.
+ */
+export function isCoreArea(area: Area, relevance: number): boolean {
+  return area.essential || (relevance >= 0.8 && area.filmImpact >= 0.85);
+}
+
+/**
+ * How much one area is understood, from confirmed facts alone.
+ *
+ * A single clear statement — "man to man, we take away the paint first" —
+ * genuinely tells ReadRep most of what it needs about an area, so the first
+ * confirmed fact is worth 0.6 and further facts fill in the rest. Requiring a
+ * linear count meant a coach had to repeat themselves to move the needle.
+ */
+export function confidenceFrom(confirmedCount: number, needs: number): number {
+  if (confirmedCount <= 0) return 0;
+  const span = Math.max(1, needs - 1);
+  return clamp(0.6 + 0.4 * ((confirmedCount - 1) / span));
+}
+
+/** Coach turns that actually said something. "Depends." is not an answer. */
+export function substantiveAnswers(turns: { role: string; content: string }[]): number {
+  return turns.filter((t) => t.role === "coach" && t.content.trim().split(/\s+/).length >= 3).length;
+}
+
+/**
  * The rising bar. Early on ReadRep will ask about a moderately useful area;
- * eight questions in, only something that genuinely changes a film read is
- * worth another minute of the coach's time.
+ * ten questions in, only something that genuinely changes a film read is worth
+ * another minute of the coach's time.
  */
 export function questionThreshold(questionsAsked: number): number {
   return Math.min(MAX_THRESHOLD, BASE_THRESHOLD + FATIGUE_PER_QUESTION * questionsAsked);
@@ -121,7 +174,7 @@ export function redundancyFor(
     score = 0.95;
     reason = `The coach already covered ${area.label.toLowerCase()} directly.`;
   } else if (facts.confirmedCount > 0) {
-    score = 0.5 + 0.4 * (facts.confirmedCount / needed);
+    score = 0.4 + 0.5 * (facts.confirmedCount / needed);
     reason = `Partly answered already (${facts.confirmedCount} of ~${needed} things known).`;
   } else {
     const hits = area.evidence.filter((word) => facts.text.includes(word));
@@ -175,9 +228,7 @@ export function assessAreas(snapshot: {
     // An area is understood exactly as far as there are confirmed facts in it.
     const status = stateById.get(area.id)?.status;
     const confidence =
-      status === "not_applicable"
-        ? 0
-        : clamp(confirmedCount / Math.max(1, area.needs.length));
+      status === "not_applicable" ? 0 : confidenceFrom(confirmedCount, area.needs.length);
 
     const redundancy = redundancyFor(area, { confirmedCount, inferredCount, text, openUnknowns });
 
@@ -199,6 +250,7 @@ export function assessAreas(snapshot: {
 
     return {
       area,
+      core: isCoreArea(area, relevance),
       relevance,
       confidence,
       confirmedCount,
@@ -233,53 +285,79 @@ export function skippedAreas(snapshot: Parameters<typeof assessAreas>[0]): AreaA
  */
 export function calculateFilmReadiness(snapshot: Parameters<typeof assessAreas>[0]): Readiness {
   const assessments = assessAreas(snapshot);
-  const relevant = assessments.filter((a) => a.relevance >= RELEVANT_ENOUGH);
+  const core = assessments.filter((a) => a.core && a.relevance >= RELEVANT_ENOUGH);
+  const answers = substantiveAnswers(snapshot.turns);
 
-  const totalWeight = relevant.reduce((sum, a) => sum + a.area.weight * a.relevance, 0);
-  const earned = relevant.reduce((sum, a) => sum + a.area.weight * a.relevance * a.confidence, 0);
+  // Scored over the core only. A coach who has explained their identity,
+  // principles, actions, key reads and priorities is readable, whether or not
+  // ReadRep ever asked about late-clock rules or terminology.
+  const totalWeight = core.reduce((sum, a) => sum + a.area.weight * a.relevance, 0);
+  const earned = core.reduce((sum, a) => sum + a.area.weight * a.relevance * a.confidence, 0);
   const score = totalWeight === 0 ? 0 : earned / totalWeight;
 
   const essentialsMissing = assessments
-    .filter((a) => a.area.essential && !(a.confirmedCount > 0 && a.confidence >= 0.5))
+    .filter((a) => a.area.essential && a.confirmedCount === 0)
     .map((a) => a.area);
 
   /**
-   * A hole, not a gap.
-   *
-   * An aggregate score can hide the one thing that matters: a team whose whole
-   * offense is a side ball screen can score well across twelve other areas and
-   * still be unreadable, because nothing is known about the action they
-   * actually run. Any area that is both highly relevant to THIS team and
-   * high-impact for film, with nothing confirmed in it, blocks readiness on its
-   * own — which is exactly the adaptive weighting the aggregate is meant to
-   * express, made non-negotiable.
+   * A hole: a core area with nothing confirmed in it at all. An aggregate can
+   * hide the one thing that matters — a team whose whole offense is a side ball
+   * screen can score well elsewhere and still be unreadable — so every core
+   * area needs at least one real fact before ReadRep claims it can read film.
    */
-  const holes = assessments
-    .filter((a) => a.relevance >= 0.8 && a.area.filmImpact >= 0.85 && a.confirmedCount === 0)
-    .map((a) => a.area);
+  const holes = core.filter((a) => a.confirmedCount === 0).map((a) => a.area);
 
-  const blockingUnknowns = relevant
-    .filter((a) => a.relevance >= 0.5)
+  /**
+   * Which gaps actually block.
+   *
+   * Previously any unknown at importance >= 0.7 in a moderately relevant area
+   * blocked readiness, and unknowns only closed when the model echoed their
+   * exact text back — so they accumulated and permanently pinned a coach at
+   * "almost ready". A gap now blocks only when it is genuinely load-bearing:
+   * near-certain importance, in a core area, and in an area ReadRep knows
+   * NOTHING about yet. Once there is a confirmed fact in an area, a residual
+   * question there is something to learn later, not a reason to refuse film.
+   */
+  const blockingUnknowns = core
+    .filter((a) => a.confirmedCount === 0)
     .flatMap((a) => a.openUnknowns)
-    .filter((u) => u.importance >= 0.7);
+    .filter((u) => u.importance >= 0.8);
 
-  if (
-    essentialsMissing.length === 0 &&
-    holes.length === 0 &&
-    score >= 0.55 &&
-    blockingUnknowns.length === 0
-  ) {
+  const coreCovered = holes.length === 0 && essentialsMissing.length === 0;
+
+  // 0.62 rather than 0.60: one confirmed fact in every core area scores exactly
+  // 0.60, and "I know the headline of everything" is a shade thin to start
+  // grading decisions on. A little depth somewhere is a cheap guard against a
+  // model that extracted broadly but shallowly.
+  if (coreCovered && score >= 0.62 && blockingUnknowns.length === 0) {
     return {
       status: "film_ready",
       headline: "Film-ready",
       reason: "I know enough to start reading film like your staff.",
       score: round(score),
-      essentialsMissing,
-      blockingUnknowns,
+      essentialsMissing: [],
+      blockingUnknowns: [],
     };
   }
 
-  if (essentialsMissing.length === 0 && score >= 0.4) {
+  /**
+   * Enough talking. Once the core is covered and the coach has given ten real
+   * answers, ReadRep would rather start reading film than keep asking — the
+   * remaining questions are refinements, and it goes on learning from film and
+   * from the coach afterwards either way.
+   */
+  if (coreCovered && answers >= SOFT_STOP_ANSWERS) {
+    return {
+      status: "film_ready",
+      headline: "Film-ready",
+      reason: "I know enough to start reading film like your staff.",
+      score: round(score),
+      essentialsMissing: [],
+      blockingUnknowns: [],
+    };
+  }
+
+  if (essentialsMissing.length === 0 && score >= 0.35) {
     return {
       status: "almost_ready",
       headline: "Almost film-ready",
@@ -329,9 +407,7 @@ export function shouldEndOnboarding(snapshot: Parameters<typeof assessAreas>[0])
   reason: string;
 } {
   const readiness = calculateFilmReadiness(snapshot);
-  if (readiness.status === "film_ready") {
-    return { end: true, reason: readiness.reason };
-  }
+  if (readiness.status === "film_ready") return { end: true, reason: readiness.reason };
 
   const open = rankedQuestions(snapshot);
   if (open.length === 0) {
@@ -341,8 +417,24 @@ export function shouldEndOnboarding(snapshot: Parameters<typeof assessAreas>[0])
     };
   }
 
+  /**
+   * Past the soft stop, only a high-value question earns another minute. If
+   * the best thing left is a refinement, ReadRep stops rather than grinding
+   * through the tail of the framework — the coach can keep teaching it later.
+   */
+  const answers = substantiveAnswers(snapshot.turns);
+  if (answers >= SOFT_STOP_ANSWERS && open[0].gain < HIGH_VALUE_GAIN) {
+    return {
+      end: true,
+      reason: "What's left is refinement — better to start reading film and learn the rest from it.",
+    };
+  }
+
   return { end: false, reason: `Next: ${open[0].area.label}` };
 }
+
+/** Past the soft stop, a question must be worth at least this much to ask. */
+export const HIGH_VALUE_GAIN = 0.45;
 
 const clamp = (n: number) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 const round = (n: number) => Number(n.toFixed(2));

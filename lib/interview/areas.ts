@@ -91,7 +91,9 @@ export const AREAS: Area[] = [
     label: "Actions they run",
     filmUse: "Recognise the set or action a possession is running instead of describing it generically.",
     needs: ["The actions they flow into", "What they want to get to first"],
-    filmImpact: 0.7,
+    // Core: naming what a possession is actually running is part of reading it,
+    // so this gates readiness alongside identity, principles and priorities.
+    filmImpact: 0.85,
     weight: 2,
     essential: false,
     evidence: ["zoom", "horns", "chicago", "spain", "flow", "flare", "pin", "handoff", "dho", "stagger", "ram"],
@@ -198,7 +200,11 @@ export const AREAS: Area[] = [
     label: "Zone principles",
     filmUse: "Read a zone possession — high post, short corner, baseline coverage, and when they change defenses.",
     needs: ["Which zone", "The key responsibility inside it", "When they go to it"],
-    filmImpact: 0.7,
+    // For a team that plays zone every possession this is their defensive
+    // structure, as load-bearing as help rotations are for a man team — so it
+    // is core for them. Relevance keeps it at 0.05 for everyone else, where it
+    // is neither asked about nor counted.
+    filmImpact: 0.85,
     weight: 2,
     essential: false,
     evidence: ["zone", "2-3", "3-2", "1-3-1", "matchup zone", "short corner", "high post"],
