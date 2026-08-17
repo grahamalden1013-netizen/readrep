@@ -43,31 +43,28 @@ export function applyTurn(
     ]),
   );
 
-  // Retirements and edits.
+  // Revisions, retractions and confirmations — the same ops the server applies.
   for (const update of turn.updates) {
     const target = knowledge.find((k) => k.id === update.id);
     if (!target) continue;
-    // A replacement of something confirmed waits for the coach, exactly as the
-    // server action queues it — so it must not land as knowledge here.
-    if (update.replacesConfirmedRule && target.provenance === "confirmed" && !update.retire) continue;
-    if (update.retire) {
-      const i = knowledge.indexOf(target);
-      knowledge.splice(i, 1);
+
+    if (update.op === "confirm") {
+      if (target.provenance === "inferred") {
+        target.provenance = "confirmed";
+        target.confirmedAt = new Date().toISOString();
+      }
       continue;
     }
+    if (update.op === "retire") {
+      knowledge.splice(knowledge.indexOf(target), 1);
+      continue;
+    }
+    // A replacement of something confirmed waits for the coach, exactly as the
+    // server action queues it — so it must not land as knowledge here.
+    if (update.replacesConfirmedRule && target.provenance === "confirmed") continue;
     if (update.instruction !== null) target.instruction = update.instruction;
     if (update.trigger !== null) target.trigger = update.trigger;
-    if (update.priority !== null) target.priority = update.priority;
     if (update.confidence !== null) target.confidence = update.confidence;
-  }
-
-  // Inferences the coach agreed with.
-  for (const confirmation of turn.confirmations) {
-    const target = knowledge.find((k) => k.id === confirmation.id);
-    if (target && target.provenance === "inferred") {
-      target.provenance = "confirmed";
-      target.confirmedAt = new Date().toISOString();
-    }
   }
 
   // New facts, parents before children.
@@ -87,6 +84,7 @@ export function applyTurn(
     const created: KnowledgeNode = {
       id: nextId("k"),
       areaId: n.areaId,
+      concept: n.concept,
       phase: n.phase,
       action: n.action,
       coverage: n.coverage,
@@ -107,13 +105,8 @@ export function applyTurn(
   }
 
   const areaStates = new Map(snapshot.areaStates.map((s) => [s.areaId, { ...s }]));
-  for (const c of turn.coverageUpdates) {
-    areaStates.set(c.areaId, {
-      areaId: c.areaId,
-      status: c.status,
-      confidence: c.confidence,
-      note: c.note,
-    });
+  for (const areaId of turn.notApplicable) {
+    areaStates.set(areaId, { areaId, status: "not_applicable", confidence: 0, note: null });
   }
 
   const resolved = new Set(turn.resolvedUnknowns.map((q) => q.toLowerCase()));
@@ -128,7 +121,7 @@ export function applyTurn(
         id: nextId("u"),
         areaId: u.areaId,
         question: u.question,
-        whyItMatters: u.whyItMatters,
+        whyItMatters: null,
         importance: u.importance,
         createdAt: new Date().toISOString(),
       })),

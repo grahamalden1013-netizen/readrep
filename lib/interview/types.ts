@@ -14,6 +14,8 @@ export type Provenance = "confirmed" | "inferred";
 export type KnowledgeNode = {
   id: string;
   areaId: string;
+  /** What kind of fact this is: "alignment", "pace", "first read". */
+  concept: string;
   phase: Phase;
   action: Action | null;
   coverage: Coverage | null;

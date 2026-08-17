@@ -17,9 +17,9 @@ import { assert, equal, excludes, group, includes, report, test } from "./harnes
 import { setMockResponder } from "@/lib/ai/provider";
 import { getProvider, interviewModel, providerMode, DEFAULT_MODEL, MODEL_VAR, API_KEY_VAR } from "@/lib/ai/anthropic";
 import { PROMPT_VERSION, runInterviewTurn } from "@/lib/ai/coach-interview";
-import { buildSystemPrompt } from "@/lib/ai/prompts/coach-interview-v2";
+import { buildSystemPrompt } from "@/lib/ai/prompts/coach-interview-v3";
 import { InterviewTurnSchema } from "@/lib/ai/schemas";
-import { node, outputNode, snapshot, turnOutput, unknown, RICH_ANSWER_FACTS } from "./fixtures";
+import { fact, node, snapshot, turnOutput, unknown, RICH_ANSWER_FACTS } from "./fixtures";
 
 process.env.READREP_AI_MODE = "mock";
 
@@ -64,8 +64,8 @@ async function main() {
 
   await test("carries the closed situation vocabulary", () => {
     const prompt = buildSystemPrompt(snapshot());
-    includes(prompt, "coverage: drop, switch, hedge, blitz, ice, under, over", "coverages listed");
-    includes(prompt, "closed enums", "declared closed");
+    includes(prompt, "coverages: drop, switch, hedge, blitz, ice, under, over", "coverages listed");
+    includes(prompt, "WRITING CONDITIONS", "and how to phrase them");
   });
 
   await test("hands the model a ranked shortlist, not a syllabus", () => {
@@ -77,9 +77,7 @@ async function main() {
   await test("areas the coach already answered are named as off-limits", () => {
     const prompt = buildSystemPrompt(
       snapshot({
-        knowledge: RICH_ANSWER_FACTS.map((f) =>
-          node({ areaId: f.area_id, instruction: f.instruction }),
-        ),
+        knowledge: RICH_ANSWER_FACTS.map((f) => node({ areaId: f.area, instruction: f.value })),
         turns: [
           { id: "t1", seq: 1, role: "coach", content: "We're mostly 5-out, we play fast, we run Zoom and side ball screens.", areaId: null, reason: null, informationValue: null, model: null, promptVersion: null, createdAt: "" },
         ],
@@ -135,7 +133,7 @@ async function main() {
   });
 
   await test("the prompt version is the versioned one, not a bare name", () => {
-    equal(PROMPT_VERSION, "coach-interview-v2", "improvable over time");
+    equal(PROMPT_VERSION, "coach-interview-v3", "improvable over time");
   });
 
   // -------------------------------------------------------------------------
@@ -181,7 +179,7 @@ async function main() {
   group("Redundancy enforcement — the engine, not just the prompt");
 
   await test("a question about something the coach already answered is rejected and retried", async () => {
-    const stored = RICH_ANSWER_FACTS.map((f) => node({ areaId: f.area_id, instruction: f.instruction }));
+    const stored = RICH_ANSWER_FACTS.map((f) => node({ areaId: f.area, instruction: f.value }));
     const withAnswers = snapshot({
       knowledge: stored,
       turns: [
@@ -196,11 +194,11 @@ async function main() {
       return call === 1
         ? turnOutput({
             assistant_message: "What offensive alignment do you use?",
-            next_question_area: "offense.identity",
+            next_question: { area: "offense.identity", information_value: "high", reason: "test" },
           })
         : turnOutput({
             assistant_message: "How do you want to defend?",
-            next_question_area: "defense.identity",
+            next_question: { area: "defense.identity", information_value: "high", reason: "test" },
           });
     });
 
@@ -214,14 +212,14 @@ async function main() {
   });
 
   await test("two redundant attempts end the interview rather than asking anyway", async () => {
-    const stored = RICH_ANSWER_FACTS.map((f) => node({ areaId: f.area_id, instruction: f.instruction }));
+    const stored = RICH_ANSWER_FACTS.map((f) => node({ areaId: f.area, instruction: f.value }));
     const withAnswers = snapshot({
       knowledge: stored,
       turns: [{ id: "t2", seq: 2, role: "coach", content: "We're 5-out, fast, Zoom and side ball screens.", areaId: null, reason: null, informationValue: null, model: null, promptVersion: null, createdAt: "" }],
     });
 
     setMockResponder(() =>
-      turnOutput({ assistant_message: "Do you run ball screens?", next_question_area: "offense.identity" }),
+      turnOutput({ assistant_message: "Do you run ball screens?", next_question: { area: "offense.identity", information_value: "high", reason: "test" } }),
     );
 
     const result = await runInterviewTurn(withAnswers, "anything");
@@ -243,8 +241,8 @@ async function main() {
     setMockResponder(() => {
       call += 1;
       return call === 1
-        ? turnOutput({ assistant_message: "What's your first read vs drop?", next_question_area: "offense.ball_screen_reads" })
-        : turnOutput({ assistant_message: "How do you get the post the ball?", next_question_area: "offense.post_reads" });
+        ? turnOutput({ assistant_message: "What's your first read vs drop?", next_question: { area: "offense.ball_screen_reads", information_value: "high", reason: "test" } })
+        : turnOutput({ assistant_message: "How do you get the post the ball?", next_question: { area: "offense.post_reads", information_value: "high", reason: "test" } });
     });
 
     const result = await runInterviewTurn(noBallScreens, "anything");
@@ -258,7 +256,7 @@ async function main() {
   await test("the model cannot declare film-ready on an empty playbook", async () => {
     setMockResponder(() =>
       turnOutput({
-        film_readiness: { status: "film_ready", reason: "I know plenty." },
+        film_readiness: "film_ready",
         should_end_onboarding: true,
       }),
     );
@@ -272,13 +270,7 @@ async function main() {
   await test("this turn's answer counts toward readiness immediately", async () => {
     setMockResponder(() =>
       turnOutput({
-        confirmed_knowledge_updates: RICH_ANSWER_FACTS,
-        coverage_updates: RICH_ANSWER_FACTS.map((f) => ({
-          area_id: f.area_id,
-          status: "partial" as const,
-          confidence: 0.8,
-          note: null,
-        })),
+        knowledge_updates: RICH_ANSWER_FACTS,
       }),
     );
     const result = await runInterviewTurn(snapshot(), "long answer");
@@ -291,23 +283,31 @@ async function main() {
   group("Failures — the app degrades honestly");
 
   await test("output missing a required field is rejected, not partly applied", async () => {
-    setMockResponder(() => ({ assistant_message: "Hi", confirmed_knowledge_updates: [] }));
+    setMockResponder(() => ({ assistant_message: "Hi", knowledge_updates: [] }));
     const result = await runInterviewTurn(snapshot(), "hello");
     assert(!result.ok, "malformed output fails the turn");
     equal(result.kind, "invalid_output", "classified as invalid output");
   });
 
-  await test("an out-of-vocabulary enum is rejected at the schema boundary", async () => {
+  await test("a coverage ReadRep doesn't know is kept as coaching language, not invented", async () => {
     setMockResponder(() =>
       turnOutput({
-        confirmed_knowledge_updates: [
-          outputNode({ area_id: "defense.ball_screen_coverage", coverage: "veer" as never }),
+        knowledge_updates: [
+          fact({
+            area: "defense.ball_screen_coverage",
+            value: "run them off the line",
+            // "veer" is real basketball but not in ReadRep's vocabulary.
+            conditions: ["ball screen", "veer"],
+          }),
         ],
       }),
     );
     const result = await runInterviewTurn(snapshot(), "we veer it");
-    assert(!result.ok, "the turn fails rather than silently dropping the coverage");
-    equal(result.kind, "invalid_output", "classified as invalid output");
+    assert(result.ok, "the turn still succeeds — the coach said something real");
+    if (!result.ok) return;
+    equal(result.turn.nodes.length, 1, "the instruction is kept");
+    equal(result.turn.nodes[0].coverage, null, "but no coverage is invented");
+    includes(result.turn.nodes[0].trigger ?? "", "veer", "the coach's own word survives as context");
   });
 
   await test("prose where an object was required fails", async () => {

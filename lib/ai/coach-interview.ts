@@ -8,7 +8,7 @@ import {
   PROMPT_VERSION,
   TEACH_PREFIX,
   buildSystemPrompt,
-} from "@/lib/ai/prompts/coach-interview-v2";
+} from "@/lib/ai/prompts/coach-interview-v3";
 import { AREA_BY_ID } from "@/lib/interview/areas";
 import {
   SKIP_REDUNDANCY,
@@ -245,6 +245,7 @@ export function projectSnapshot(snapshot: InterviewSnapshot, turn: NormalizedTur
       ...turn.nodes.map((n, i) => ({
         id: `projected-${i}`,
         areaId: n.areaId,
+        concept: n.concept,
         phase: n.phase,
         action: n.action,
         coverage: n.coverage,
@@ -267,7 +268,7 @@ export function projectSnapshot(snapshot: InterviewSnapshot, turn: NormalizedTur
         id: `projected-unknown-${i}`,
         areaId: u.areaId,
         question: u.question,
-        whyItMatters: u.whyItMatters,
+        whyItMatters: null,
         importance: u.importance,
         createdAt: new Date().toISOString(),
       })),
@@ -279,15 +280,14 @@ export function projectSnapshot(snapshot: InterviewSnapshot, turn: NormalizedTur
   };
 }
 
+/**
+ * Area state now only records what the coach ruled out. Confidence is computed
+ * from stored facts in `gain.ts`, so there is nothing for the model to report.
+ */
 function mergeAreaStates(snapshot: InterviewSnapshot, turn: NormalizedTurn) {
   const byId = new Map(snapshot.areaStates.map((s) => [s.areaId, { ...s }]));
-  for (const c of turn.coverageUpdates) {
-    byId.set(c.areaId, {
-      areaId: c.areaId,
-      status: c.status,
-      confidence: c.confidence,
-      note: c.note,
-    });
+  for (const areaId of turn.notApplicable) {
+    byId.set(areaId, { areaId, status: "not_applicable", confidence: 0, note: null });
   }
   return [...byId.values()];
 }

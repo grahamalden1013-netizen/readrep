@@ -68,7 +68,7 @@ async function main() {
 
     assert(
       confirmed.some((n) => n.coverage === "drop"),
-      "the vs-drop read is scoped to the coverage, not stored as prose",
+      "the vs-drop read is scoped from free-text conditions, not stored as prose",
     );
   });
   if (turn1.ok) snapshot = applyTurn(snapshot, RICH_ANSWER, turn1.turn);
@@ -119,6 +119,10 @@ async function main() {
     assert(
       turn3.turn.updates.every((u) => snapshot.knowledge.some((k) => k.id === u.id)),
       "every update names a row that exists",
+    );
+    assert(
+      turn3.turn.updates.every((u) => ["revise", "retire", "confirm"].includes(u.op)),
+      "each update carries a real operation",
     );
     assert(
       turn3.turn.updates.some((u) => u.replacesConfirmedRule),

@@ -169,11 +169,15 @@ export function assessAreas(snapshot: {
 
     const relevance = clamp(area.relevance(signals));
 
-    // The model's stated confidence only counts as far as confirmed facts back
-    // it: claiming an area is understood with nothing stored earns very little.
-    const claimed = stateById.get(area.id)?.confidence ?? 0;
-    const evidence = Math.min(1, confirmedCount / Math.max(1, area.needs.length));
-    const confidence = clamp(Math.min(claimed, 0.3 + 0.7 * evidence));
+    // Confidence is evidence, full stop. The model used to report its own
+    // coverage per area; it no longer can, which removes the one place it
+    // could talk ReadRep into believing it knew more than it had stored.
+    // An area is understood exactly as far as there are confirmed facts in it.
+    const status = stateById.get(area.id)?.status;
+    const confidence =
+      status === "not_applicable"
+        ? 0
+        : clamp(confirmedCount / Math.max(1, area.needs.length));
 
     const redundancy = redundancyFor(area, { confirmedCount, inferredCount, text, openUnknowns });
 
@@ -239,12 +243,32 @@ export function calculateFilmReadiness(snapshot: Parameters<typeof assessAreas>[
     .filter((a) => a.area.essential && !(a.confirmedCount > 0 && a.confidence >= 0.5))
     .map((a) => a.area);
 
+  /**
+   * A hole, not a gap.
+   *
+   * An aggregate score can hide the one thing that matters: a team whose whole
+   * offense is a side ball screen can score well across twelve other areas and
+   * still be unreadable, because nothing is known about the action they
+   * actually run. Any area that is both highly relevant to THIS team and
+   * high-impact for film, with nothing confirmed in it, blocks readiness on its
+   * own — which is exactly the adaptive weighting the aggregate is meant to
+   * express, made non-negotiable.
+   */
+  const holes = assessments
+    .filter((a) => a.relevance >= 0.8 && a.area.filmImpact >= 0.85 && a.confirmedCount === 0)
+    .map((a) => a.area);
+
   const blockingUnknowns = relevant
     .filter((a) => a.relevance >= 0.5)
     .flatMap((a) => a.openUnknowns)
     .filter((u) => u.importance >= 0.7);
 
-  if (essentialsMissing.length === 0 && score >= 0.55 && blockingUnknowns.length === 0) {
+  if (
+    essentialsMissing.length === 0 &&
+    holes.length === 0 &&
+    score >= 0.55 &&
+    blockingUnknowns.length === 0
+  ) {
     return {
       status: "film_ready",
       headline: "Film-ready",
@@ -259,11 +283,13 @@ export function calculateFilmReadiness(snapshot: Parameters<typeof assessAreas>[
     return {
       status: "almost_ready",
       headline: "Almost film-ready",
-      reason: blockingUnknowns.length
-        ? `One thing left: ${blockingUnknowns[0].question}`
-        : "A couple more answers and I can read your film.",
+      reason: holes.length
+        ? `Still need your ${holes[0].label.toLowerCase()} — it's central to how you play.`
+        : blockingUnknowns.length
+          ? `One thing left: ${blockingUnknowns[0].question}`
+          : "A couple more answers and I can read your film.",
       score: round(score),
-      essentialsMissing,
+      essentialsMissing: [...essentialsMissing, ...holes],
       blockingUnknowns,
     };
   }
@@ -273,9 +299,11 @@ export function calculateFilmReadiness(snapshot: Parameters<typeof assessAreas>[
     headline: learningHeadline(assessments),
     reason: essentialsMissing.length
       ? `Still learning ${essentialsMissing[0].label.toLowerCase()}.`
-      : "Still learning how your team plays.",
+      : holes.length
+        ? `Still learning ${holes[0].label.toLowerCase()}.`
+        : "Still learning how your team plays.",
     score: round(score),
-    essentialsMissing,
+    essentialsMissing: [...essentialsMissing, ...holes],
     blockingUnknowns,
   };
 }

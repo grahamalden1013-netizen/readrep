@@ -1,156 +1,128 @@
 import * as z from "zod/v4";
 
-import {
-  ACTIONS,
-  CLOCKS,
-  COVERAGES,
-  PHASES,
-  ROLES,
-  TERM_CATEGORIES,
-  TOPIC_STATUSES,
-} from "@/lib/interview/vocabulary";
-
 /**
- * The interview turn contract.
+ * The interview turn contract — deliberately small.
  *
- * Sent to the provider as a JSON schema and used to validate what comes back.
- * Every situation dimension is a closed enum, so the model can phrase a read
- * however it likes but can never invent a column value. Confirmed and inferred
- * knowledge arrive in separate arrays, which is what keeps a guess from ever
- * being persisted as something the coach taught.
+ * WHY THIS IS SHAPED THE WAY IT IS
  *
- * Further normalization — unknown area ids, cross-playbook ids, confidence
- * clamping, list caps — happens in `lib/interview/normalize.ts`.
+ * Structured output is enforced by compiling the JSON Schema into a grammar
+ * that constrains decoding. A grammar has no bounded-repetition primitive, so
+ * every `maxItems` on an array and every `minLength`/`maxLength` on a string
+ * has to be UNROLLED into explicit alternatives. The previous version of this
+ * schema was only ~6.5 KB of JSON but carried 85 array slots and 31 string
+ * length bounds, several of them inside an item repeated 26 times — which
+ * compiled to a grammar large enough that Anthropic rejected the request with
+ * "The compiled grammar is too large".
+ *
+ * So this schema states SHAPE ONLY:
+ *   · no string length bounds        — lengths are trimmed in normalize.ts
+ *   · no array item caps             — caps are applied in normalize.ts
+ *   · four small enums, total 12 members, none of them nullable
+ *   · basketball vocabulary is NOT encoded here at all
+ *
+ * A read's situation ("side ball screen", "vs drop", "ball handler") arrives
+ * as free-text `conditions`, and `lib/interview/conditions.ts` maps it back
+ * onto ReadRep's closed vocabulary. That keeps the basketball knowledge in
+ * application code we can test and correct, rather than in a grammar we pay
+ * for on every token.
+ *
+ * Nothing here is trusted. `lib/interview/normalize.ts` is still the only
+ * thing that decides what reaches the database.
  */
 
-const shortText = z.string().min(1).max(240);
-const mediumText = z.string().min(1).max(600);
+/** What to do with a piece of knowledge. */
+export const KnowledgeOpSchema = z.enum([
+  /** Something new the coach said, or that you inferred. */
+  "add",
+  /** Change an existing fact — supply its id in `target_id`. */
+  "revise",
+  /** The coach retracted it — supply its id in `target_id`. */
+  "retire",
+  /** The coach agreed with something you had only inferred. */
+  "confirm",
+]);
 
-const nullableEnum = <T extends readonly [string, ...string[]]>(values: T) =>
-  z.enum(values).nullable();
+export const ProvenanceSchema = z.enum(["confirmed", "inferred"]);
 
-/** A single coached read, scoped to the situation it applies in. */
-export const KnowledgeNodeSchema = z.object({
-  /** A slug used only within this turn, so `parent_ref` can chain reads. */
-  ref: z.string().min(1).max(60),
-  area_id: z.string().min(1).max(80),
-  phase: z.enum(PHASES),
-  action: nullableEnum(ACTIONS),
-  coverage: nullableEnum(COVERAGES),
-  role: nullableEnum(ROLES),
-  clock: nullableEnum(CLOCKS),
-  /** The condition, when the read is conditional: "the big commits". */
-  trigger: shortText.nullable(),
-  /** What the player should do: "hit the roller". */
-  instruction: shortText,
-  /** Read order within one situation. 1 is the first look. */
-  priority: z.number().int().min(1).max(20),
-  /** How sure you are the coach meant this, 0-1. */
-  confidence: z.number().min(0).max(1),
-  /** `ref` of the read this branches from, if any. */
-  parent_ref: z.string().max(60).nullable(),
-});
-
-export type KnowledgeNodeOutput = z.infer<typeof KnowledgeNodeSchema>;
-
-/** A revision to something already stored, keyed by its database id. */
 export const KnowledgeUpdateSchema = z.object({
-  id: z.string().min(1).max(64),
-  instruction: shortText.nullable(),
-  trigger: shortText.nullable(),
-  priority: z.number().int().min(1).max(20).nullable(),
-  confidence: z.number().min(0).max(1).nullable(),
-  /** True when the coach retracted this entirely. */
-  retire: z.boolean(),
+  op: KnowledgeOpSchema,
+  /** A ReadRep area id, e.g. "offense.ball_screen_reads". Checked in code. */
+  area: z.string(),
+  /** What kind of thing this is: "alignment", "pace", "first read". */
+  concept: z.string(),
+  /** The coaching content itself: "5-out", "turn the corner". */
+  value: z.string(),
+  provenance: ProvenanceSchema,
+  /** 0-1. How sure you are the coach meant this. */
+  confidence: z.number(),
   /**
-   * True when this rewrites something the coach previously confirmed. Those
-   * are never applied silently — they become a proposal the coach accepts.
+   * When this applies, in plain basketball English, one phrase per entry:
+   * ["side ball screen", "vs drop", "ball handler", "if the big commits"].
+   * ReadRep maps these onto its own situation vocabulary.
    */
+  conditions: z.array(z.string()),
+  /** The existing fact's id for revise/retire/confirm. Null for add. */
+  target_id: z.string().nullable(),
+  /** True when this rewrites something the coach previously confirmed. */
   replaces_confirmed_rule: z.boolean(),
-  reason: shortText.nullable(),
 });
 
-/** An inference the coach has now explicitly agreed with. */
-export const ConfirmationSchema = z.object({
-  id: z.string().min(1).max(64),
-  reason: shortText.nullable(),
+export type KnowledgeUpdateOutput = z.infer<typeof KnowledgeUpdateSchema>;
+
+export const UnknownSchema = z.object({
+  area: z.string(),
+  /** The specific thing you still need to know. */
+  question: z.string(),
+  /** 0-1. How much answering it would change a film read. */
+  importance: z.number(),
+  /** True when this answer resolved a gap that was already open. */
+  resolved: z.boolean(),
 });
 
 export const TerminologySchema = z.object({
-  term: z.string().min(1).max(60),
-  meaning: shortText,
-  category: z.enum(TERM_CATEGORIES),
-});
-
-/** A gap that would change a future film read if it were filled. */
-export const UnknownSchema = z.object({
-  area_id: z.string().min(1).max(80),
-  question: shortText,
-  why_it_matters: shortText.nullable(),
-  /** 0-1. Above 0.7 this blocks film-readiness. */
-  importance: z.number().min(0).max(1),
-});
-
-export const CoverageUpdateSchema = z.object({
-  area_id: z.string().min(1).max(80),
-  status: z.enum(TOPIC_STATUSES),
-  confidence: z.number().min(0).max(1),
-  note: shortText.nullable(),
+  term: z.string(),
+  meaning: z.string(),
 });
 
 export const ConflictSchema = z.object({
-  /** The stored knowledge id this appears to contradict, if identifiable. */
-  id: z.string().max(64).nullable(),
-  description: shortText,
+  description: z.string(),
   /** True when this reads as a contextual exception, not a contradiction. */
   likely_exception: z.boolean(),
 });
 
+export const NextQuestionSchema = z.object({
+  /** The ReadRep area your question is about. Checked in code. */
+  area: z.string(),
+  information_value: z.enum(["high", "medium", "low"]),
+  reason: z.string(),
+});
+
 export const InterviewTurnSchema = z.object({
-  /**
-   * What ReadRep says to the coach. Usually just the next question — no
-   * praise, no summary of what was learned.
-   */
-  assistant_message: mediumText,
+  /** What ReadRep says to the coach — usually just the next question. */
+  assistant_message: z.string(),
 
-  /** Facts the coach explicitly stated. Extract everything one answer contains. */
-  confirmed_knowledge_updates: z.array(KnowledgeNodeSchema).max(16),
+  /** Everything learned, revised, retracted or confirmed this turn. */
+  knowledge_updates: z.array(KnowledgeUpdateSchema),
 
-  /** Reasonable supporting context. Never persisted as something they taught. */
-  inferred_knowledge_updates: z.array(KnowledgeNodeSchema).max(10),
-
-  /** Revisions to reads already stored, by their real id. */
-  updated_knowledge: z.array(KnowledgeUpdateSchema).max(10),
-
-  /** Inferences the coach has now agreed with, by their real id. */
-  confirmed_inferences: z.array(ConfirmationSchema).max(10),
+  /** Gaps that would materially change a film read, opened or closed. */
+  unknowns: z.array(UnknownSchema),
 
   /** Team-specific words worth adopting. Not standard basketball vocabulary. */
-  terminology_detected: z.array(TerminologySchema).max(6),
+  terminology: z.array(TerminologySchema),
 
   /** Apparent contradictions, flagged rather than resolved unilaterally. */
-  knowledge_conflicts: z.array(ConflictSchema).max(5),
+  conflicts: z.array(ConflictSchema),
 
-  /** Gaps that would materially change a film read. */
-  important_unknowns: z.array(UnknownSchema).max(6),
+  /** Areas the coach has told you don't apply to their team. */
+  areas_not_applicable: z.array(z.string()),
 
-  /** Unknowns this answer resolved, by their exact question text. */
-  resolved_unknowns: z.array(shortText).max(6),
+  /** Your read on readiness. ReadRep computes its own and that one wins. */
+  film_readiness: z.enum(["learning", "almost_ready", "film_ready"]),
 
-  coverage_updates: z.array(CoverageUpdateSchema).max(12),
-
-  film_readiness: z.object({
-    status: z.enum(["learning", "almost_ready", "film_ready"]),
-    reason: shortText,
-  }),
-
-  /** Which canonical area the next question belongs to. */
-  next_question_area: z.string().max(80).nullable(),
-  next_question_information_value: z.enum(["high", "medium", "low"]),
-  reason_question_is_needed: shortText.nullable(),
+  next_question: NextQuestionSchema,
 
   /** 2-4 short taps, only when they genuinely save the coach typing. */
-  suggested_answers: z.array(z.string().min(1).max(60)).max(4),
+  suggested_answers: z.array(z.string()),
 
   should_end_onboarding: z.boolean(),
 });

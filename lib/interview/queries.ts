@@ -33,6 +33,7 @@ function parseScratch(value: unknown): InterviewScratch {
 type KnowledgeRow = {
   id: string;
   area_id: string;
+  concept: string;
   phase: KnowledgeNode["phase"];
   action: KnowledgeNode["action"];
   coverage: KnowledgeNode["coverage"];
@@ -49,12 +50,13 @@ type KnowledgeRow = {
 };
 
 const KNOWLEDGE_COLUMNS =
-  "id, area_id, phase, action, coverage, role, clock, trigger, instruction, priority, confidence, provenance, confirmed_at, parent_id, created_at";
+  "id, area_id, concept, phase, action, coverage, role, clock, trigger, instruction, priority, confidence, provenance, confirmed_at, parent_id, created_at";
 
 export function toNode(row: KnowledgeRow): KnowledgeNode {
   return {
     id: row.id,
     areaId: row.area_id,
+    concept: row.concept,
     phase: row.phase,
     action: row.action,
     coverage: row.coverage,

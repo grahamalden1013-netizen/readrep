@@ -145,7 +145,7 @@ export async function getTeamKnowledge(teamId: string): Promise<KnowledgeNode[]>
   const { data } = await supabase
     .from("playbook_knowledge")
     .select(
-      "id, area_id, phase, action, coverage, role, clock, trigger, instruction, priority, confidence, provenance, confirmed_at, parent_id, created_at",
+      "id, area_id, concept, phase, action, coverage, role, clock, trigger, instruction, priority, confidence, provenance, confirmed_at, parent_id, created_at",
     )
     .eq("playbook_id", playbook.id)
     .eq("status", "active")
@@ -154,6 +154,7 @@ export async function getTeamKnowledge(teamId: string): Promise<KnowledgeNode[]>
   return (data ?? []).map((row) => ({
     id: row.id,
     areaId: row.area_id,
+    concept: row.concept,
     phase: row.phase as Phase,
     action: row.action as Action | null,
     coverage: row.coverage as Coverage | null,

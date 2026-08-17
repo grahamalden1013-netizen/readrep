@@ -101,22 +101,27 @@ async function persistTurn(
     snapshot.knowledge.filter((k) => k.provenance === "confirmed").map((k) => [k.id, k]),
   );
 
-  // --- Revisions -----------------------------------------------------------
+  // --- Revisions, retractions and confirmations ----------------------------
   for (const update of turn.updates) {
-    // Never silently overwrite coaching philosophy the coach confirmed. A
-    // replacement becomes a proposal they accept or decline.
-    if (update.replacesConfirmedRule && confirmedById.has(update.id) && !update.retire) {
-      await supabase.from("playbook_rule_changes").insert({
-        playbook_id: playbookId,
-        target_id: update.id,
-        proposed_instruction: update.instruction ?? confirmedById.get(update.id)!.instruction,
-        proposed_trigger: update.trigger,
-        reason: update.reason,
-      });
+    const target = snapshot.knowledge.find((k) => k.id === update.id);
+    if (!target) continue;
+
+    if (update.op === "confirm") {
+      // A guess the coach has now agreed with.
+      if (target.provenance === "confirmed") continue;
+      await supabase
+        .from("playbook_knowledge")
+        .update({
+          provenance: "confirmed",
+          confirmed_at: new Date().toISOString(),
+          fingerprint: fingerprintOf({ ...target, provenance: "confirmed" }),
+        })
+        .eq("id", update.id)
+        .eq("playbook_id", playbookId);
       continue;
     }
 
-    if (update.retire) {
+    if (update.op === "retire") {
       await supabase
         .from("playbook_knowledge")
         .update({ status: "superseded" })
@@ -125,28 +130,25 @@ async function persistTurn(
       continue;
     }
 
+    // Never silently overwrite coaching philosophy the coach confirmed. A
+    // replacement becomes a proposal they accept or decline.
+    if (update.replacesConfirmedRule && confirmedById.has(update.id)) {
+      await supabase.from("playbook_rule_changes").insert({
+        playbook_id: playbookId,
+        target_id: update.id,
+        proposed_instruction: update.instruction ?? target.instruction,
+        proposed_trigger: update.trigger,
+        reason: null,
+      });
+      continue;
+    }
+
     await applyKnowledgePatch(playbookId, update.id, {
       instruction: update.instruction,
       trigger: update.trigger,
-      priority: update.priority,
+      priority: null,
       confidence: update.confidence,
     });
-  }
-
-  // --- Confirmed inferences: a guess the coach has now agreed with ----------
-  for (const confirmation of turn.confirmations) {
-    const node = snapshot.knowledge.find((k) => k.id === confirmation.id);
-    if (!node || node.provenance === "confirmed") continue;
-
-    await supabase
-      .from("playbook_knowledge")
-      .update({
-        provenance: "confirmed",
-        confirmed_at: new Date().toISOString(),
-        fingerprint: fingerprintOf({ ...node, provenance: "confirmed" }),
-      })
-      .eq("id", confirmation.id)
-      .eq("playbook_id", playbookId);
   }
 
   // --- New knowledge. Parents before children so parent_id can be set. -----
@@ -159,6 +161,7 @@ async function persistTurn(
     const row = {
       playbook_id: playbookId,
       area_id: node.areaId,
+      concept: node.concept,
       phase: node.phase,
       action: node.action,
       coverage: node.coverage,
@@ -239,20 +242,22 @@ async function persistTurn(
       playbook_id: playbookId,
       area_id: unknown.areaId,
       question: unknown.question,
-      why_it_matters: unknown.whyItMatters,
+      why_it_matters: null,
       importance: unknown.importance,
     });
   }
 
-  // --- Area coverage -------------------------------------------------------
-  if (turn.coverageUpdates.length > 0) {
+  // --- Areas the coach ruled out -------------------------------------------
+  // Nothing else is stored here: an area's confidence is computed from the
+  // facts in it, so the model has no way to report coverage it doesn't have.
+  if (turn.notApplicable.length > 0) {
     await supabase.from("playbook_area_state").upsert(
-      turn.coverageUpdates.map((c) => ({
+      turn.notApplicable.map((areaId) => ({
         playbook_id: playbookId,
-        area_id: c.areaId,
-        status: c.status,
-        confidence: c.confidence,
-        note: c.note,
+        area_id: areaId,
+        status: "not_applicable",
+        confidence: 0,
+        note: null,
       })),
       { onConflict: "playbook_id,area_id" },
     );
@@ -304,7 +309,7 @@ async function applyKnowledgePatch(
   // recompute it or the row stops matching its own slot.
   const { data: current } = await supabase
     .from("playbook_knowledge")
-    .select("area_id, phase, action, coverage, role, clock, trigger, priority, provenance")
+    .select("area_id, concept, instruction, phase, action, coverage, role, clock, trigger, priority, provenance")
     .eq("id", nodeId)
     .eq("playbook_id", playbookId)
     .maybeSingle();
@@ -312,6 +317,8 @@ async function applyKnowledgePatch(
   if (current) {
     patch.fingerprint = fingerprintOf({
       areaId: current.area_id,
+      concept: current.concept,
+      instruction: values.instruction !== null ? values.instruction : current.instruction,
       phase: current.phase,
       action: current.action,
       coverage: current.coverage,
@@ -482,7 +489,7 @@ export async function confirmKnowledge(teamId: string, nodeId: string): Promise<
   const supabase = await createClient();
   const { data: node } = await supabase
     .from("playbook_knowledge")
-    .select("area_id, phase, action, coverage, role, clock, trigger, priority")
+    .select("area_id, concept, instruction, phase, action, coverage, role, clock, trigger, priority")
     .eq("id", nodeId)
     .eq("playbook_id", auth.playbookId)
     .maybeSingle();
@@ -496,6 +503,8 @@ export async function confirmKnowledge(teamId: string, nodeId: string): Promise<
       confirmed_at: new Date().toISOString(),
       fingerprint: fingerprintOf({
         areaId: node.area_id,
+        concept: node.concept,
+        instruction: node.instruction,
         phase: node.phase,
         action: node.action,
         coverage: node.coverage,
