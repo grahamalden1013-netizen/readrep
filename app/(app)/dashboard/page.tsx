@@ -1,102 +1,98 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import Link from "next/link";
 
-import {
-  GoogleConnectionCard,
-  type ConnectionState,
-} from "@/components/google-connection-card";
+import { DayPlan } from "@/components/dashboard/day-plan";
+import { SyncButton } from "@/components/dashboard/sync-button";
+import { TestsSection } from "@/components/dashboard/tests-section";
+import { TodaySchedule } from "@/components/dashboard/today-schedule";
+import { TodaySummary } from "@/components/dashboard/today-summary";
+import { TodoSection } from "@/components/dashboard/todo-section";
+import { buttonClasses } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { listCalendars } from "@/lib/google/calendars";
-import {
-  GoogleAuthExpiredError,
-  GoogleNotConnectedError,
-  hasGoogleConnection,
-} from "@/lib/google/client";
+import { getDashboardData } from "@/lib/queries/dashboard";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Today" };
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  const data = await getDashboardData(user);
+
+  if (!data.hasSchoolCalendar) {
+    return <NoCalendarState />;
+  }
+
+  const firstName = user.name.split(" ")[0] || "there";
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome, {user.name.split(" ")[0] || "there"}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Timezone {user.timezone}. Homework starts at{" "}
-          {user.preferences.earliestStart} and ends by{" "}
-          {user.preferences.latestEnd}.
-        </p>
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Good {greeting(data.now, data.timezone)}, {firstName}
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            {data.today.openCount === 0
+              ? "You're all caught up."
+              : `${data.today.openCount} open item${data.today.openCount === 1 ? "" : "s"} across your courses.`}
+          </p>
+        </div>
+        <SyncButton lastSyncedAt={data.lastSyncedAt} />
+      </header>
+
+      <TodaySummary data={data} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TodaySchedule schedule={data.today.schedule} timezone={data.timezone} />
+        <DayPlan
+          plan={data.today.plan}
+          timezone={data.timezone}
+          breakMinutes={user.preferences.breakMinutes}
+        />
       </div>
 
-      <Suspense fallback={<ConnectionSkeleton />}>
-        <ConnectionSection userId={user.id} />
-      </Suspense>
+      <TestsSection assessments={data.assessments} timezone={data.timezone} />
 
-      <Card>
-        <CardHeader
-          title="What's next"
-          description="Stage 1 of the build is in place."
-        />
-        <CardBody>
-          <ul className="space-y-2 text-sm text-muted">
-            <li>
-              ✓ App shell, database, Google sign-in and calendar connection.
-            </li>
-            <li>
-              → Next: discover your calendars, read the Schoology feed, and list
-              your upcoming assignments.
-            </li>
-          </ul>
-        </CardBody>
-      </Card>
+      <TodoSection
+        groups={data.groups}
+        timezone={data.timezone}
+        now={data.now}
+      />
     </div>
   );
 }
 
-async function ConnectionSection({ userId }: { userId: string }) {
-  const state = await loadConnectionState(userId);
-  return <GoogleConnectionCard state={state} />;
+function greeting(now: Date, timezone: string): string {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: timezone,
+    }).format(now),
+  );
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
 }
 
-/**
- * Proves the stored Google grant actually works by making a real API call
- * rather than just checking that a row exists.
- */
-async function loadConnectionState(userId: string): Promise<ConnectionState> {
-  if (!(await hasGoogleConnection(userId))) {
-    return { status: "disconnected" };
-  }
-  try {
-    const calendars = await listCalendars(userId);
-    return { status: "connected", calendarCount: calendars.length };
-  } catch (error) {
-    if (error instanceof GoogleNotConnectedError) {
-      return { status: "disconnected" };
-    }
-    if (error instanceof GoogleAuthExpiredError) {
-      return { status: "expired", message: error.message };
-    }
-    return {
-      status: "expired",
-      message:
-        error instanceof Error
-          ? `Could not reach Google Calendar: ${error.message}`
-          : "Could not reach Google Calendar.",
-    };
-  }
-}
-
-function ConnectionSkeleton() {
+function NoCalendarState() {
   return (
-    <Card>
-      <CardHeader title="Google Calendar" description="Checking connection…" />
-      <CardBody>
-        <div className="h-16 animate-pulse rounded-lg bg-surface-muted" />
-      </CardBody>
-    </Card>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
+      <Card>
+        <CardHeader
+          title="Pick your Schoology calendar"
+          description="Homework Agent needs to know which calendar carries your assignments."
+        />
+        <CardBody>
+          <Link
+            href="/settings/calendars"
+            className={buttonClasses("primary", "sm")}
+          >
+            Choose calendars
+          </Link>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
