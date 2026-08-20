@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Apple's on-device nudity classifier (SensitiveContentAnalysis).
+         Requires this entitlement, which must be requested from Apple at
+         https://developer.apple.com/contact/request/sensitive-content-analysis
+         Until it is granted, SCSensitivityAnalyzer reports `.disabled` and the
+         app degrades gracefully: the safety pass loses one signal and the human
+         approval step — which was always mandatory — carries the load.
+         See docs/APPSTORE.md. -->
+    <key>com.apple.developer.sensitivecontentanalysis.client</key>
+    <array>
+        <string>analysis</string>
+    </array>
+</dict>
+</plist>

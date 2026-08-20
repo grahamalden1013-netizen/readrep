@@ -112,6 +112,9 @@ public struct GameSessionView: Hashable, Sendable {
     public let roundNumber: Int
     public let totalRounds: Int
     public let round: RoundView?
+    /// Every round that has finished, in order. Only ever populated with fully
+    /// revealed rounds, so it carries nothing that is still secret.
+    public let finishedRounds: [RoundView]
     public let players: [Player]
     public let scores: [PlayerID: Int]
     public let phaseDeadline: Date?
@@ -121,13 +124,26 @@ public struct GameSessionView: Hashable, Sendable {
 
     public init(
         roomID: RoomID, settings: GameSettings, phase: GamePhase, roundNumber: Int,
-        totalRounds: Int, round: RoundView?, players: [Player], scores: [PlayerID: Int],
+        totalRounds: Int, round: RoundView?, finishedRounds: [RoundView] = [],
+        players: [Player], scores: [PlayerID: Int],
         phaseDeadline: Date?, viewer: PlayerID, isHost: Bool, revision: Int
     ) {
         self.roomID = roomID; self.settings = settings; self.phase = phase
         self.roundNumber = roundNumber; self.totalRounds = totalRounds; self.round = round
+        self.finishedRounds = finishedRounds
         self.players = players; self.scores = scores; self.phaseDeadline = phaseDeadline
         self.viewer = viewer; self.isHost = isHost; self.revision = revision
+    }
+
+    /// The end-game recap, computed on device from the published rounds.
+    public var results: GameResults? {
+        guard phase == .gameComplete else { return nil }
+        let rounds = finishedRounds.compactMap { Round(finished: $0) }
+        let engine = AwardEngine()
+        var state = GameSessionState(roomID: roomID, settings: settings, phase: .gameComplete)
+        state.completedRounds = rounds
+        state.scores = scores
+        return engine.results(state: state, players: players)
     }
 
     public func nickname(_ id: PlayerID) -> String {
@@ -171,6 +187,7 @@ public struct GameSessionView: Hashable, Sendable {
             roundNumber: state.displayRoundNumber,
             totalRounds: state.totalRounds,
             round: round,
+            finishedRounds: state.completedRounds.map { RoundRedactor.redact($0, viewer: viewer) },
             players: players,
             scores: state.scores,
             phaseDeadline: state.phaseDeadline,

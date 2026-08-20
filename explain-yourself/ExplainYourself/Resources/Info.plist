@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Explain Yourself</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+
+    <!-- Permission strings.
+         Written to say what the app actually does and what it does not, rather
+         than to maximise the tap-through rate. App Review reads these, but so
+         does the person holding the phone. -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Explain Yourself looks through the photos you choose, on this phone, to find ones worth explaining. Only photos you approve are ever shown to your friends.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Save the end-of-game recap card to your photos.</string>
+
+    <!-- Deliberately absent: NSCameraUsageDescription, NSLocationWhenInUse-
+         UsageDescription, NSContactsUsageDescription, NSMicrophoneUsage-
+         Description. The game needs none of them, so it does not ask. -->
+
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string>LaunchBackground</string>
+        <key>UIImageName</key>
+        <string>LaunchWordmark</string>
+        <key>UIImageRespectsSafeAreaInsets</key>
+        <true/>
+    </dict>
+
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UIUserInterfaceStyle</key>
+    <string>Dark</string>
+    <key>UIRequiresFullScreen</key>
+    <true/>
+    <key>UIStatusBarHidden</key>
+    <true/>
+
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.explainyourself.app</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>explainyourself</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Read by AppConfig. Populated from the .xcconfig files, so the values
+         are per-configuration and the real ones live in the git-ignored
+         Secrets.xcconfig. -->
+    <key>EYEnvironment</key>
+    <string>$(EY_ENVIRONMENT)</string>
+    <key>EYSupabaseURL</key>
+    <string>$(EY_SUPABASE_URL)</string>
+    <key>EYSupabaseAnonKey</key>
+    <string>$(EY_SUPABASE_ANON_KEY)</string>
+    <key>EYPrivacyPolicyURL</key>
+    <string>$(EY_PRIVACY_POLICY_URL)</string>
+
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+</dict>
+</plist>

@@ -302,3 +302,59 @@ public extension RoundView {
         )
     }
 }
+
+public extension Round {
+    /// Rebuild a finished round from the public view every device already holds.
+    ///
+    /// Once a round is over there is nothing left to conceal — the owner, the
+    /// answer and the full tally are all published — so the recap can be
+    /// computed on each device rather than round-tripped. Two devices doing this
+    /// from the same broadcast necessarily agree, which is why the awards are
+    /// identical on every screen without anyone having to trust a server to
+    /// send the same six lines six times.
+    ///
+    /// Returns `nil` for a round that has not finished, because reconstructing
+    /// one would mean inventing the parts that are still hidden.
+    init?(finished view: RoundView) {
+        guard view.resultsAreOut else { return nil }
+        guard let ownerID = view.ownerID else { return nil }
+
+        // The tally carries who voted which way, so the individual votes come
+        // back exactly — just without their timestamps, which nothing scores on.
+        let votes: [Vote] = (view.tally?.counts ?? []).flatMap { entry in
+            entry.voterIDs.map { voter in
+                Vote(roundID: view.id, voterID: voter, choice: entry.choice, castAt: view.startedAt)
+            }
+        }
+
+        let answers: [PlayerAnswer] = view.answers.compactMap { answer in
+            guard let author = answer.authorID else { return nil }
+            return PlayerAnswer(
+                id: answer.id, roundID: view.id, authorID: author,
+                text: answer.text, submittedAt: view.startedAt
+            )
+        }
+
+        self.init(
+            id: view.id,
+            index: view.index,
+            mode: view.mode,
+            ownerID: ownerID,
+            assetID: view.assetID,
+            commitment: view.commitment,
+            secret: view.reveal,
+            votes: votes,
+            answers: answers,
+            status: view.status,
+            startedAt: view.startedAt,
+            ownerRevealed: true,
+            secretDelivered: true,
+            resultsRevealed: true
+        )
+    }
+}
+
+public extension RoundView {
+    /// True once everything about this round is public.
+    var resultsAreOut: Bool { tally != nil || status != .active }
+}

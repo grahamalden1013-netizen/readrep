@@ -371,6 +371,7 @@ actor SupabaseGameBackend: GameBackend, GameAssetUploading {
             roundNumber: max(1, publicState.roundIndex + 1),
             totalRounds: publicState.settings.roundCount,
             round: round,
+            finishedRounds: publicState.completedRounds,
             players: room.players,
             scores: publicState.scores,
             phaseDeadline: publicState.phaseDeadline,
@@ -472,12 +473,14 @@ struct PublicSessionState: Decodable {
     let phase: GamePhase
     let roundIndex: Int
     let currentRound: RoundView?
+    let completedRounds: [RoundView]
     let scores: [PlayerID: Int]
     let revision: Int
     let phaseDeadline: Date?
 
     enum CodingKeys: String, CodingKey {
-        case settings, phase, roundIndex, currentRound, scores, revision, phaseDeadline
+        case settings, phase, roundIndex, currentRound, completedRounds
+        case scores, revision, phaseDeadline
     }
 
     init(from decoder: Decoder) throws {
@@ -486,6 +489,7 @@ struct PublicSessionState: Decodable {
         phase = try container.decode(GamePhase.self, forKey: .phase)
         roundIndex = try container.decode(Int.self, forKey: .roundIndex)
         currentRound = try container.decodeIfPresent(RoundView.self, forKey: .currentRound)
+        completedRounds = try container.decodeIfPresent([RoundView].self, forKey: .completedRounds) ?? []
         let raw = try container.decodeIfPresent([String: Int].self, forKey: .scores) ?? [:]
         scores = Dictionary(uniqueKeysWithValues: raw.map { (PlayerID($0.key), $0.value) })
         revision = try container.decode(Int.self, forKey: .revision)
