@@ -135,6 +135,66 @@ final class PrivacyTests: XCTestCase {
         XCTAssertTrue(duringVote.answers.contains { $0.isYours }, "you can still spot your own")
     }
 
+    // MARK: - The broadcast payload
+
+    /// The strongest statement this package can make: whatever goes on the
+    /// realtime channel is safe for the least privileged reader in the room,
+    /// because it is built without reference to any reader at all.
+    func testTheBroadcastCopyOfARoundNeverCarriesASecret() {
+        for mode in GameMode.allCases {
+            var driver = GameDriver(mode: mode)
+            driver.start()
+            for _ in 0..<8 {
+                let round = driver.round ?? driver.state.completedRounds.last!
+                let broadcast = RoundRedactor.publicView(round)
+                XCTAssertNil(broadcast.yourSecretInstruction, "\(mode) at \(driver.state.phase)")
+                XCTAssertFalse(broadcast.isYours)
+                XCTAssertNil(broadcast.yourVote)
+                if !round.resultsRevealed {
+                    XCTAssertNil(broadcast.reveal, "\(mode) at \(driver.state.phase)")
+                    XCTAssertNil(broadcast.tally)
+                    XCTAssertTrue(broadcast.answers.allSatisfy { $0.authorID == nil })
+                }
+                if mode.hidesOwnerUntilVote && !round.resultsRevealed {
+                    XCTAssertNil(broadcast.ownerID, "\(mode) at \(driver.state.phase)")
+                }
+                driver.send(.phaseElapsed)
+                if driver.state.isFinished { break }
+            }
+        }
+    }
+
+    func testMergingPrivateFactsRestoresOnlyThisDevicesView() {
+        var driver = GameDriver(mode: .truthOrCap)
+        driver.start()
+        driver.run(to: .secretInstruction)
+        let round = driver.round!
+        let broadcast = RoundRedactor.publicView(round)
+
+        let ownerFacts = RoundRedactor.privateFacts(round, viewer: round.ownerID)
+        XCTAssertNotNil(broadcast.merging(ownerFacts, viewer: round.ownerID).yourSecretInstruction)
+
+        let other = Cast.six.map(\.id).first { $0 != round.ownerID }!
+        let otherFacts = RoundRedactor.privateFacts(round, viewer: other)
+        XCTAssertNil(broadcast.merging(otherFacts, viewer: other).yourSecretInstruction)
+        XCTAssertFalse(broadcast.merging(otherFacts, viewer: other).isYours)
+    }
+
+    func testFactsFromTheWrongRoundAreIgnoredRatherThanApplied() {
+        var driver = GameDriver(mode: .truthOrCap)
+        driver.start()
+        driver.run(to: .secretInstruction)
+        let round = driver.round!
+        let broadcast = RoundRedactor.publicView(round)
+        let stale = PrivateRoundFacts(
+            roundID: RoundID("some-old-round"), isYours: true,
+            yourSecretInstruction: .lie
+        )
+        let merged = broadcast.merging(stale, viewer: round.ownerID)
+        XCTAssertNil(merged.yourSecretInstruction, "a late private payload must not paint onto a new round")
+        XCTAssertFalse(merged.isYours)
+    }
+
     // MARK: - Analytics
 
     func testAnalyticsNeverCarriesRawLibraryCounts() {

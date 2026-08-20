@@ -169,58 +169,136 @@ public struct AnonymousAnswer: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+/// The facts about a round that belong to exactly one device.
+///
+/// These never travel on the broadcast channel. Each device fetches its own
+/// from a row-level-secured table and merges them into the shared public view.
+public struct PrivateRoundFacts: Codable, Hashable, Sendable {
+    public let roundID: RoundID
+    public let isYours: Bool
+    public let yourVote: VoteChoice?
+    public let yourSecretInstruction: SecretInstruction?
+    /// Which of the anonymous answers you wrote. The broadcast copy cannot say,
+    /// because saying would deanonymise it for everyone else too.
+    public let yourAnswerID: AnswerID?
+
+    public init(
+        roundID: RoundID,
+        isYours: Bool,
+        yourVote: VoteChoice? = nil,
+        yourSecretInstruction: SecretInstruction? = nil,
+        yourAnswerID: AnswerID? = nil
+    ) {
+        self.roundID = roundID
+        self.isYours = isYours
+        self.yourVote = yourVote
+        self.yourSecretInstruction = yourSecretInstruction
+        self.yourAnswerID = yourAnswerID
+    }
+
+    public static func none(_ roundID: RoundID) -> PrivateRoundFacts {
+        PrivateRoundFacts(roundID: roundID, isYours: false)
+    }
+}
+
 public enum RoundRedactor {
-    /// The single place that decides what one device is allowed to know.
+    /// The one copy of a round that every device receives.
     ///
-    /// Mirrored server-side by `public.round_view()` in
-    /// `supabase/migrations/0020_rls.sql`. The server copy is the one that
-    /// actually protects anything — this copy exists so demo mode behaves
+    /// This is the shape that goes onto the realtime channel, so it must be
+    /// safe for the *least* privileged reader in the room. It carries no secret
+    /// instruction, no nonce, no owner while the mode is concealing one, no
+    /// answer authorship before the reveal and no vote totals before the
+    /// result. There is no per-viewer branching here at all — the broadcast
+    /// cannot leak to Sam something it does not also send to Alex.
+    ///
+    /// Mirrored server-side by `public.publish_state()` in
+    /// `supabase/migrations/0030_functions.sql`, which is the copy that
+    /// actually protects anything. This one exists so demo mode behaves
     /// identically and so the rules have unit tests.
-    public static func redact(_ round: Round, viewer: PlayerID) -> RoundView {
-        let isOwner = round.ownerID == viewer
-
-        // The owner's name. Visible to the owner always (they can see their own
-        // photo), to everyone else only once the game says so.
-        let visibleOwner: PlayerID? = (round.ownerRevealed || isOwner) ? round.ownerID : nil
-
-        // The secret instruction. Never leaves the owner's device before the
-        // reveal — not to the host, not to a client with a patched UI, because
-        // the server never sends it to them in the first place.
-        let secret: SecretInstruction? = {
-            guard isOwner, round.mode.usesSecretInstruction, round.secretDelivered else { return nil }
-            return round.secret?.instruction
-        }()
-
-        let answers: [AnonymousAnswer] = round.answers.map { answer in
-            AnonymousAnswer(
-                id: answer.id,
-                text: answer.text,
-                isYours: answer.authorID == viewer,
-                authorID: round.resultsRevealed ? answer.authorID : nil
-            )
-        }
-
-        return RoundView(
+    public static func publicView(_ round: Round) -> RoundView {
+        RoundView(
             id: round.id,
             index: round.index,
             mode: round.mode,
             assetID: round.assetID,
-            ownerID: visibleOwner,
-            isYours: isOwner,
+            ownerID: round.ownerRevealed ? round.ownerID : nil,
+            isYours: false,
             commitment: round.commitment,
-            yourSecretInstruction: secret,
+            yourSecretInstruction: nil,
             reveal: round.resultsRevealed ? round.secret : nil,
-            answers: answers,
+            answers: round.answers.map { answer in
+                AnonymousAnswer(
+                    id: answer.id,
+                    text: answer.text,
+                    isYours: false,
+                    authorID: round.resultsRevealed ? answer.authorID : nil
+                )
+            },
             // No partial totals, ever. Seeing "3 CAP / 0 TRUTH" before you vote
             // does not make you a better detective, it makes you a follower.
             tally: round.resultsRevealed ? VoteTally(votes: round.votes, mode: round.mode) : nil,
-            yourVote: round.vote(by: viewer)?.choice,
+            yourVote: nil,
             // *That* someone voted is public — it drives "WAITING ON 2".
             // *What* they voted is not, until everybody is in.
             votedPlayerIDs: round.votes.map(\.voterID).sorted(),
             answeredPlayerIDs: round.answers.map(\.authorID).sorted(),
             status: round.status,
             startedAt: round.startedAt
+        )
+    }
+
+    /// The private half, computed server-side for one specific device.
+    public static func privateFacts(_ round: Round, viewer: PlayerID) -> PrivateRoundFacts {
+        let isOwner = round.ownerID == viewer
+        let secret: SecretInstruction? = {
+            guard isOwner, round.mode.usesSecretInstruction, round.secretDelivered else { return nil }
+            return round.secret?.instruction
+        }()
+        return PrivateRoundFacts(
+            roundID: round.id,
+            isYours: isOwner,
+            yourVote: round.vote(by: viewer)?.choice,
+            yourSecretInstruction: secret,
+            yourAnswerID: round.answer(by: viewer)?.id
+        )
+    }
+
+    /// What one device ends up rendering: the shared view plus its own facts.
+    public static func redact(_ round: Round, viewer: PlayerID) -> RoundView {
+        publicView(round).merging(privateFacts(round, viewer: viewer), viewer: viewer)
+    }
+}
+
+public extension RoundView {
+    /// Fold this device's private facts into the broadcast copy.
+    func merging(_ facts: PrivateRoundFacts, viewer: PlayerID) -> RoundView {
+        guard facts.roundID == id else { return self }
+        return RoundView(
+            id: id,
+            index: index,
+            mode: mode,
+            assetID: assetID,
+            // The owner always recognises their own photo, so hiding it from
+            // them would only look like a bug.
+            ownerID: ownerID ?? (facts.isYours ? viewer : nil),
+            isYours: facts.isYours,
+            commitment: commitment,
+            yourSecretInstruction: facts.yourSecretInstruction,
+            reveal: reveal,
+            answers: answers.map {
+                AnonymousAnswer(
+                    id: $0.id,
+                    text: $0.text,
+                    isYours: $0.id == facts.yourAnswerID || $0.authorID == viewer,
+                    authorID: $0.authorID
+                )
+            },
+            tally: tally,
+            yourVote: facts.yourVote,
+            votedPlayerIDs: votedPlayerIDs,
+            answeredPlayerIDs: answeredPlayerIDs,
+            status: status,
+            startedAt: startedAt
         )
     }
 }

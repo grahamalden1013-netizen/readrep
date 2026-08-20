@@ -1,0 +1,49 @@
+project_id = "explain-yourself"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 200
+
+[db]
+port = 54322
+major_version = 15
+
+[realtime]
+enabled = true
+
+[storage]
+enabled = true
+file_size_limit = "3MiB"
+
+[auth]
+enabled = true
+site_url = "explainyourself://"
+additional_redirect_urls = ["explainyourself://auth-callback"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+# Anonymous sign-in is the whole account strategy for v1: nobody registers an
+# email to play a party game in a living room.
+enable_anonymous_sign_ins = true
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
+
+[auth.external.apple]
+# Sign in with Apple is opt-in, offered later for saved exclusions and history.
+enabled = false
+client_id = ""
+secret = ""
+
+[functions.session]
+verify_jwt = true
+
+[functions.flavour]
+verify_jwt = true
+
+[functions.cleanup]
+# Guarded by an explicit service-key check inside the function.
+verify_jwt = false
