@@ -1,0 +1,23 @@
+// Settings common to every configuration.
+
+PRODUCT_NAME = Explain Yourself
+PRODUCT_BUNDLE_IDENTIFIER = com.explainyourself.app$(BUNDLE_ID_SUFFIX)
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+TARGETED_DEVICE_FAMILY = 1
+SWIFT_VERSION = 5.0
+SUPPORTS_MACCATALYST = NO
+
+// Portrait only. Every screen in this game is one phone held up in a room.
+INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait
+INFOPLIST_KEY_UIUserInterfaceStyle = Dark
+
+CODE_SIGN_STYLE = Automatic
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+DEAD_CODE_STRIPPING = YES
+
+// Real values live in Secrets.xcconfig, which is git-ignored. See
+// Secrets.example.xcconfig for the template.
+#include? "Secrets.xcconfig"
