@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 import ExplainYourselfKit
 
 /// WE FOUND SOME 💀
@@ -21,7 +20,6 @@ struct ApprovalDeckView: View {
 
     @State private var image: UIImage?
     @State private var nextImage: UIImage?
-    @State private var showingPicker = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var deck: ApprovalDeck { approvals.deck }
@@ -54,12 +52,6 @@ struct ApprovalDeckView: View {
         .onChange(of: pipeline.candidates) { _, candidates in
             approvals.loadDeck(candidates)
         }
-        .photosPicker(
-            isPresented: $showingPicker,
-            selection: .constant([]),
-            maxSelectionCount: 30,
-            matching: .images
-        )
     }
 
     // MARK: - Pieces

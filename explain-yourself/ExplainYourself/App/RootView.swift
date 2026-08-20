@@ -97,7 +97,7 @@ struct RootView: View {
                 if let coordinator, let room {
                     GameView(
                         coordinator: coordinator,
-                        loader: environment.makeImageLoader(room: room.id),
+                        makeLoader: environment.makeImageLoader(room: room.id),
                         onExit: { returnHome() }
                     )
                 }

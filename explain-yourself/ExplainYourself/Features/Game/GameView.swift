@@ -9,19 +9,24 @@ import ExplainYourselfKit
 /// about what is happening.
 struct GameView: View {
     @ObservedObject var coordinator: GameSessionCoordinator
-    @StateObject private var loader: GameImageLoader
     let onExit: () -> Void
+
+    /// Built once, here, rather than handed in. An image loader passed into a
+    /// `@StateObject` from a parent gets rebuilt on every parent render and
+    /// then silently discarded, which looks like it works and quietly throws
+    /// away the cache on each redraw.
+    @StateObject private var loader: GameImageLoader
 
     @State private var showingHostMenu = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         coordinator: GameSessionCoordinator,
-        loader: GameImageLoader,
+        makeLoader: @autoclosure @escaping () -> GameImageLoader,
         onExit: @escaping () -> Void
     ) {
         self.coordinator = coordinator
-        self._loader = StateObject(wrappedValue: loader)
+        self._loader = StateObject(wrappedValue: makeLoader())
         self.onExit = onExit
     }
 

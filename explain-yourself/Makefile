@@ -52,9 +52,4 @@ functions: ## Deploy the edge functions
 
 .PHONY: secret-scan
 secret-scan: ## Fail if anything that looks like a real credential is committed
-	@echo "Scanning tracked files for credentials…"
-	@! git ls-files -z | xargs -0 grep -lE \
-		'(service_role|SUPABASE_SERVICE_ROLE_KEY=[A-Za-z0-9._-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-ant-[A-Za-z0-9-]{20,}|eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,})' \
-		2>/dev/null \
-		|| (echo "Found something that looks like a credential. Do not commit it." && exit 1)
-	@echo "Clean."
+	@scripts/secret-scan.sh
