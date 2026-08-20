@@ -31,7 +31,9 @@ public struct DiversitySelector: Sendable {
     ) -> [CandidateScore] {
         let pool = scores
             .filter(\.isEligible)
-            .sorted { $0.total > $1.total }
+            // Ties broken on the id so two runs over the same library produce
+            // the same deck.
+            .sorted { $0.total == $1.total ? $0.assetID < $1.assetID : $0.total > $1.total }
         guard limit > 0, !pool.isEmpty else { return [] }
 
         var chosen: [CandidateScore] = []
@@ -39,7 +41,7 @@ public struct DiversitySelector: Sendable {
         var remaining = pool
 
         while chosen.count < limit, !remaining.isEmpty {
-            var bestIndex = 0
+            var bestIndex: Int?
             var bestValue = -Double.infinity
 
             for (index, candidate) in remaining.enumerated() {
@@ -52,12 +54,32 @@ public struct DiversitySelector: Sendable {
                 }
             }
 
-            let picked = remaining.remove(at: bestIndex)
+            guard let pick = bestIndex else { break }
+            let picked = remaining.remove(at: pick)
             chosen.append(picked)
-            if let signal = signals[picked.assetID] { chosenSignals.append(signal) }
+            guard let signal = signals[picked.assetID] else { continue }
+            chosenSignals.append(signal)
+
+            // Near-duplicates are dropped outright rather than merely pushed
+            // down. Penalising them is not enough: when someone took forty
+            // photos of one moment, a penalty still lets thirty-nine of them
+            // back in as soon as the genuinely different candidates run out,
+            // and the deck ends up being that moment anyway. A shorter, varied
+            // deck beats a full one the player stops looking at.
+            remaining.removeAll { other in
+                guard let otherSignal = signals[other.assetID] else { return false }
+                return isNearDuplicate(otherSignal, signal)
+            }
         }
 
         return chosen
+    }
+
+    /// Two shots of the same instant. Hash 0 means "no hash computed", which
+    /// must never match anything.
+    func isNearDuplicate(_ a: PhotoSignals, _ b: PhotoSignals) -> Bool {
+        guard a.perceptualHash != 0, b.perceptualHash != 0 else { return false }
+        return (a.perceptualHash ^ b.perceptualHash).nonzeroBitCount <= duplicateHammingThreshold
     }
 
     /// 0 = nothing like anything already picked, 1 = we already have this photo.
@@ -70,12 +92,7 @@ public struct DiversitySelector: Sendable {
 
         var worst = 0.0
         for existing in chosen {
-            // A near-duplicate is disqualifying on its own, no averaging.
-            let distance = (candidate.perceptualHash ^ existing.perceptualHash).nonzeroBitCount
-            if candidate.perceptualHash != 0, existing.perceptualHash != 0,
-               distance <= duplicateHammingThreshold {
-                return 1
-            }
+            if isNearDuplicate(candidate, existing) { return 1 }
 
             var score = 0.0
             if candidate.kind == existing.kind { score += 0.40 }

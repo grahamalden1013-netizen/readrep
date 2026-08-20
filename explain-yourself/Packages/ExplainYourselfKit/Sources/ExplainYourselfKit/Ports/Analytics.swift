@@ -123,7 +123,7 @@ public enum AnalyticsValue: Hashable, Sendable {
     case string(String)
 }
 
-public enum PhotoAccessScope: String, Codable, Hashable, Sendable {
+public enum PhotoAccessScope: String, Codable, Hashable, Sendable, CaseIterable {
     case denied
     case limited
     case full
