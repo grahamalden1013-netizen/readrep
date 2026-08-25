@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/*
+ * ReadRep visual language.
+ *
+ * A film room, not a dashboard. The product is used in a gym, on a phone,
+ * between drills, and the thing that must dominate every screen is the clip and
+ * the decision. So: one dark surface, one accent, generous type, and colour
+ * reserved almost entirely for decision quality.
+ *
+ * Dark-only, deliberately. This is a film-review tool; a single committed
+ * surface keeps the video the brightest thing on the screen and keeps the
+ * quality palette meaning one thing everywhere. Recorded in
+ * docs/DESIGN.md.
+ */
+
+@theme {
+  --color-ink-950: #08090c;
+  --color-ink-900: #0b0d11;
+  --color-ink-850: #101318;
+  --color-ink-800: #161a21;
+  --color-ink-700: #1e232c;
+  --color-ink-600: #2a303b;
+  --color-ink-500: #3b4351;
+
+  --color-chalk-50: #f7f8fa;
+  --color-chalk-200: #d3d8e0;
+  --color-chalk-400: #98a1b0;
+  --color-chalk-500: #7b8493;
+
+  /* Leather. The one accent, used for actions and the active state. */
+  --color-court-400: #ff8a5c;
+  --color-court-500: #f0703c;
+  --color-court-600: #d9552a;
+
+  /*
+   * Decision quality. Five steps, never two.
+   *
+   * There is no "right/wrong" pair here on purpose: a player's answer is placed
+   * on this scale and explained, never marked wrong. Every use is paired with
+   * its written label so the colour is never the only carrier of meaning.
+   */
+  --color-quality-preferred: #34d399;
+  --color-quality-acceptable: #5eb0f0;
+  --color-quality-suboptimal: #f0b429;
+  --color-quality-risk: #f4736f;
+  --color-quality-unclear: #8b93a1;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-ink-900);
+  color: var(--color-chalk-50);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* A single, consistent focus ring. Keyboard use is a first-class path here:
+   a player works through a session with the number keys and Enter. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-court-400);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect a reader who has asked for less motion. Nothing in a session is
+   decorative enough to be worth overriding that. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes readrep-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.readrep-rise {
+  animation: readrep-rise 180ms ease-out both;
+}

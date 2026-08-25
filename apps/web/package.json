@@ -1,0 +1,34 @@
+{
+  "name": "@readrep/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "seed": "tsx --conditions=react-server scripts/seed.ts",
+    "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
+    "test:browser": "node tests/browser-smoke.mjs"
+  },
+  "dependencies": {
+    "@readrep/ai": "workspace:*",
+    "@readrep/domain": "workspace:*",
+    "@readrep/evals": "workspace:*",
+    "@readrep/observability": "workspace:*",
+    "@readrep/orchestrator": "workspace:*",
+    "@readrep/video": "workspace:*",
+    "@readrep/vision": "workspace:*",
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "tailwindcss": "^4.1.13",
+    "tsx": "^4.23.12"
+  }
+}

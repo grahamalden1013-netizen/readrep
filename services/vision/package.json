@@ -1,0 +1,20 @@
+{
+  "name": "@readrep/vision",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Detection and tracking service contracts. Phase 2 implements GPU processing.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "@readrep/domain": "workspace:*"
+  }
+}
