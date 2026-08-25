@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { brandedId, ClipRange, SemanticVersion, shortText } from "./primitives.js";
+import { brandedId, ClipRange, SemanticVersion, shortText } from "./primitives";
 
 export const FrameId = brandedId("FrameId");
 export type FrameId = z.infer<typeof FrameId>;

@@ -7,7 +7,7 @@
  * package is fabricated, and a fabricated fixture would make the whole set
  * worthless.
  */
-export * from "./fixture.js";
-export * from "./coverage.js";
-export * from "./scoring.js";
-export * from "./runner.js";
+export * from "./fixture";
+export * from "./coverage";
+export * from "./scoring";
+export * from "./runner";

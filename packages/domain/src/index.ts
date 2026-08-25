@@ -7,22 +7,22 @@
  * define their own.
  */
 
-export * from "./primitives.js";
-export * from "./confidence.js";
-export * from "./taxonomy.js";
+export * from "./primitives";
+export * from "./confidence";
+export * from "./taxonomy";
 
-export * from "./entities/identity.js";
-export * from "./entities/game.js";
-export * from "./entities/processing.js";
-export * from "./entities/vision.js";
-export * from "./entities/decision.js";
-export * from "./entities/coach.js";
-export * from "./entities/learning.js";
-export * from "./entities/audit.js";
-export * from "./entities/ai.js";
+export * from "./entities/identity";
+export * from "./entities/game";
+export * from "./entities/processing";
+export * from "./entities/vision";
+export * from "./entities/decision";
+export * from "./entities/coach";
+export * from "./entities/learning";
+export * from "./entities/audit";
+export * from "./entities/ai";
 
-export * from "./state-machine/processing.js";
+export * from "./state-machine/processing";
 
-export * from "./permissions/policy.js";
+export * from "./permissions/policy";
 
-export * from "./ports/repositories.js";
+export * from "./ports/repositories";

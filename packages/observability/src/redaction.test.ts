@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createLogger, type LogRecord } from "./logger.js";
-import { REDACTED, redactError, redactFields, redactValue } from "./redaction.js";
-import { createInMemoryMetricsSink, formatMicroUsd } from "./cost.js";
+import { createLogger, type LogRecord } from "./logger";
+import { REDACTED, redactError, redactFields, redactValue } from "./redaction";
+import { createInMemoryMetricsSink, formatMicroUsd } from "./cost";
 
 describe("key-based redaction", () => {
   const cases = [

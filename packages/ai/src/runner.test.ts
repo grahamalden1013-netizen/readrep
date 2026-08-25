@@ -1,17 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { nullLogger, createInMemoryMetricsSink } from "@readrep/observability";
-import {
-  OPERATIONS,
-  decisionAnalysis,
-  frameWindowSummary,
-} from "./operations/index.js";
+import { OPERATIONS, decisionAnalysis, frameWindowSummary } from "./operations/index";
 import {
   createScriptedProvider,
   notConfiguredProvider,
   ProviderNotConfiguredError,
   type ProviderAdapter,
-} from "./provider.js";
-import { hashInput, runOperation } from "./runner.js";
+} from "./provider";
+import { hashInput, runOperation } from "./runner";
 
 const window = {
   videoAssetId: "asset-1",

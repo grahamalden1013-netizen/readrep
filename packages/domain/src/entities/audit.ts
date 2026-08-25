@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { brandedId, Instant, shortText } from "../primitives.js";
-import { TeamId, UserId } from "./identity.js";
+import { brandedId, Instant, shortText } from "../primitives";
+import { TeamId, UserId } from "./identity";
 
 export const AuditEventId = brandedId("AuditEventId");
 export type AuditEventId = z.infer<typeof AuditEventId>;

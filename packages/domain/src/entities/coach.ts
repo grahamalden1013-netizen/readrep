@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { brandedId, Instant, longText, shortText } from "../primitives.js";
-import { Confidence, CoachRuleId } from "../confidence.js";
-import { CoachRuleTopic, DecisionCategory } from "../taxonomy.js";
-import { TeamId, UserId } from "./identity.js";
+import { brandedId, Instant, longText, shortText } from "../primitives";
+import { Confidence, CoachRuleId } from "../confidence";
+import { CoachRuleTopic, DecisionCategory } from "../taxonomy";
+import { TeamId, UserId } from "./identity";
 import {
   DecisionCandidateId,
   DecisionInterpretation,
   DecisionOptionId,
-} from "./decision.js";
+} from "./decision";
 
 export const CoachSystemId = brandedId("CoachSystemId");
 export type CoachSystemId = z.infer<typeof CoachSystemId>;

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { defineOperation } from "../operation.js";
+import { defineOperation } from "../operation";
 import {
   EvidenceWindow,
   GroundedOutput,
   Observation,
   SuppliedCoachRule,
-} from "../shared.js";
+} from "../shared";
 
 /*
  * The eight operations from blueprint §8.

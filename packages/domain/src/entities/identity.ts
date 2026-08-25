@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { brandedId, Instant, shortText } from "../primitives.js";
+import { brandedId, Instant, shortText } from "../primitives";
 
 export const UserId = brandedId("UserId");
 export type UserId = z.infer<typeof UserId>;

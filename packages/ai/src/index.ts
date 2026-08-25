@@ -7,8 +7,8 @@
  * input and output schemas, timeouts, cost ceilings, prompt and schema
  * versions, and a provider seam that keeps vendors replaceable.
  */
-export * from "./operation.js";
-export * from "./shared.js";
-export * from "./operations/index.js";
-export * from "./provider.js";
-export * from "./runner.js";
+export * from "./operation";
+export * from "./shared";
+export * from "./operations/index";
+export * from "./provider";
+export * from "./runner";

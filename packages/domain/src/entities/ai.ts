@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { brandedId, Instant, SemanticVersion, shortText } from "../primitives.js";
-import { EvidenceCitation } from "../confidence.js";
+import { brandedId, Instant, SemanticVersion, shortText } from "../primitives";
+import { EvidenceCitation } from "../confidence";
 
 export const AiOperationResultId = brandedId("AiOperationResultId");
 export type AiOperationResultId = z.infer<typeof AiOperationResultId>;

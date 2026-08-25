@@ -1,15 +1,10 @@
 import { z } from "zod";
-import { brandedId, ClipRange, Instant, longText, shortText } from "../primitives.js";
-import { Confidence, EvidenceCitation, TrackId } from "../confidence.js";
-import {
-  CourtArea,
-  DecisionCategory,
-  DecisionQuality,
-  PlayOutcome,
-} from "../taxonomy.js";
-import { GameId, VideoAssetId } from "./game.js";
-import { PlayerId } from "./identity.js";
-import { PossessionId } from "./vision.js";
+import { brandedId, ClipRange, Instant, longText, shortText } from "../primitives";
+import { Confidence, EvidenceCitation, TrackId } from "../confidence";
+import { CourtArea, DecisionCategory, DecisionQuality, PlayOutcome } from "../taxonomy";
+import { GameId, VideoAssetId } from "./game";
+import { PlayerId } from "./identity";
+import { PossessionId } from "./vision";
 
 export const DecisionCandidateId = brandedId("DecisionCandidateId");
 export type DecisionCandidateId = z.infer<typeof DecisionCandidateId>;

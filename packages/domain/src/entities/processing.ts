@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { brandedId, Instant, SemanticVersion, shortText } from "../primitives.js";
-import { ArtifactId, ProvenanceKind } from "../confidence.js";
-import { GameId, VideoAssetId } from "./game.js";
+import { brandedId, Instant, SemanticVersion, shortText } from "../primitives";
+import { ArtifactId, ProvenanceKind } from "../confidence";
+import { GameId, VideoAssetId } from "./game";
 
 export const ProcessingRunId = brandedId("ProcessingRunId");
 export type ProcessingRunId = z.infer<typeof ProcessingRunId>;

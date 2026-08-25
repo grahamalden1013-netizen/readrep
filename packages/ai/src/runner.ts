@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { AiOperationResult, OperationStatus } from "@readrep/domain";
 import type { Logger, MetricsSink } from "@readrep/observability";
-import type { AiOperation } from "./operation.js";
-import { ProviderNotConfiguredError, type ProviderAdapter } from "./provider.js";
+import type { AiOperation } from "./operation";
+import { ProviderNotConfiguredError, type ProviderAdapter } from "./provider";
 
 /** Stable hash of an operation's input, used as the idempotency key. */
 export const hashInput = (operationName: string, input: unknown): string =>

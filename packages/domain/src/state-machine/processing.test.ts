@@ -4,7 +4,7 @@ import {
   ProcessingRun,
   ProcessingState,
   retryDelayMs,
-} from "../entities/processing.js";
+} from "../entities/processing";
 import {
   applyProcessingEvent,
   canTransition,
@@ -13,7 +13,7 @@ import {
   nextOnSuccess,
   PIPELINE_ORDER,
   type ProcessingEvent,
-} from "./processing.js";
+} from "./processing";
 
 const AT = "2026-08-25T12:00:00.000Z";
 const LATER = "2026-08-25T12:05:00.000Z";

@@ -1,4 +1,4 @@
-import type { BenchmarkFixture } from "./fixture.js";
+import type { BenchmarkFixture } from "./fixture";
 
 /**
  * What the system produced for one fixture, reduced to the fields the benchmark

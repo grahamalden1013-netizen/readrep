@@ -5,8 +5,8 @@ import {
   type ConsentLookup,
   PermissionAction,
   type PermissionResource,
-} from "./policy.js";
-import type { Role } from "../entities/identity.js";
+} from "./policy";
+import type { Role } from "../entities/identity";
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const PAST = "2026-01-01T00:00:00.000Z";

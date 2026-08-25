@@ -6,8 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "node --experimental-strip-types scripts/seed.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "seed": "tsx --conditions=react-server scripts/seed.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:browser": "node tests/browser-smoke.mjs"
   },
   "dependencies": {
     "@readrep/ai": "workspace:*",
@@ -27,6 +28,7 @@
     "@tailwindcss/postcss": "^4.1.13",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "tailwindcss": "^4.1.13"
+    "tailwindcss": "^4.1.13",
+    "tsx": "^4.23.12"
   }
 }

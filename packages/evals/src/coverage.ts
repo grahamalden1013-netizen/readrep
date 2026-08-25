@@ -1,4 +1,4 @@
-import type { BenchmarkFixture } from "./fixture.js";
+import type { BenchmarkFixture } from "./fixture";
 
 /**
  * What a usable benchmark set must contain.

@@ -5,6 +5,6 @@
  * Everything here redacts by default. Nothing here ever writes media content,
  * player names, free text a player wrote, secrets, or provider URLs.
  */
-export * from "./redaction.js";
-export * from "./logger.js";
-export * from "./cost.js";
+export * from "./redaction";
+export * from "./logger";
+export * from "./cost";

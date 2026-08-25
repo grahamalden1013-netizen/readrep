@@ -10,18 +10,18 @@ import type {
   TeamId,
   User,
   UserId,
-} from "../entities/identity.js";
-import type { Game, GameId, VideoAsset, VideoAssetId } from "../entities/game.js";
-import type { ProcessingRun, ProcessingRunId } from "../entities/processing.js";
+} from "../entities/identity";
+import type { Game, GameId, VideoAsset, VideoAssetId } from "../entities/game";
+import type { ProcessingRun, ProcessingRunId } from "../entities/processing";
 import type {
   CoachReview,
   CoachReviewId,
   CoachRule,
   CoachSystem,
   CoachSystemId,
-} from "../entities/coach.js";
-import type { CoachRuleId } from "../confidence.js";
-import type { DecisionCandidate, DecisionCandidateId } from "../entities/decision.js";
+} from "../entities/coach";
+import type { CoachRuleId } from "../confidence";
+import type { DecisionCandidate, DecisionCandidateId } from "../entities/decision";
 import type {
   Assignment,
   AssignmentId,
@@ -30,8 +30,8 @@ import type {
   PlayerAttempt,
   PlayerAttemptId,
   Reflection,
-} from "../entities/learning.js";
-import type { AuditEvent } from "../entities/audit.js";
+} from "../entities/learning";
+import type { AuditEvent } from "../entities/audit";
 
 /**
  * Storage ports.

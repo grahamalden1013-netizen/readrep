@@ -1,14 +1,14 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { BenchmarkFixture } from "./fixture.js";
-import { assessCoverage, type CoverageReport } from "./coverage.js";
+import { BenchmarkFixture } from "./fixture";
+import { assessCoverage, type CoverageReport } from "./coverage";
 import {
   type BenchmarkSummary,
   type FixtureScore,
   scoreFixture,
   summarize,
   type SystemPrediction,
-} from "./scoring.js";
+} from "./scoring";
 
 export type LoadResult = {
   fixtures: BenchmarkFixture[];

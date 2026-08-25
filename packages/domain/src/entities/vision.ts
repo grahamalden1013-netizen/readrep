@@ -6,10 +6,10 @@ import {
   Instant,
   shortText,
   TimestampMs,
-} from "../primitives.js";
-import { Confidence, TrackId, Uncertainty } from "../confidence.js";
-import { GameId, VideoAssetId } from "./game.js";
-import { PlayerId } from "./identity.js";
+} from "../primitives";
+import { Confidence, TrackId, Uncertainty } from "../confidence";
+import { GameId, VideoAssetId } from "./game";
+import { PlayerId } from "./identity";
 
 export const PossessionId = brandedId("PossessionId");
 export type PossessionId = z.infer<typeof PossessionId>;

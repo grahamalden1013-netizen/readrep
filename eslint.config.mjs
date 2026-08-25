@@ -80,7 +80,7 @@ export default defineConfig([
 
   {
     name: "readrep/tests",
-    files: ["**/*.test.ts", "**/*.test.tsx", "**/scripts/**/*.ts"],
+    files: ["**/*.test.ts", "**/*.test.tsx", "**/scripts/**/*.ts", "**/tests/**/*.mjs"],
     rules: {
       "no-console": "off",
     },

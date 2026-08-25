@@ -14,7 +14,7 @@ import {
   makeConfidence,
   PlayerAttempt,
   qualityForResponse,
-} from "./index.js";
+} from "./index";
 
 const AT = "2026-08-25T12:00:00.000Z";
 const LATER = "2026-08-25T12:00:09.000Z";

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { BenchmarkFixture } from "./fixture.js";
+import { BenchmarkFixture } from "./fixture";
 import {
   assessCoverage,
   isBadDecisionGoodOutcome,
   isGoodDecisionBadOutcome,
-} from "./coverage.js";
-import { scoreFixture, summarize, type SystemPrediction } from "./scoring.js";
-import { evaluate, formatReport } from "./runner.js";
+} from "./coverage";
+import { scoreFixture, summarize, type SystemPrediction } from "./scoring";
+import { evaluate, formatReport } from "./runner";
 
 const fixture = (over: Record<string, unknown> = {}) =>
   BenchmarkFixture.parse({

@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { brandedId, ClipRange, Instant, longText, shortText } from "../primitives.js";
-import { EvidenceCitation, ProvenanceKind } from "../confidence.js";
-import { CourtArea, DecisionQuality, ResponseType } from "../taxonomy.js";
-import { PlayerId, TeamId, UserId } from "./identity.js";
-import { GameId, VideoAssetId } from "./game.js";
+import { brandedId, ClipRange, Instant, longText, shortText } from "../primitives";
+import { EvidenceCitation, ProvenanceKind } from "../confidence";
+import { CourtArea, DecisionQuality, ResponseType } from "../taxonomy";
+import { PlayerId, TeamId, UserId } from "./identity";
+import { GameId, VideoAssetId } from "./game";
 import {
   DecisionCandidateId,
   DecisionInterpretation,
   DecisionOptionId,
-} from "./decision.js";
-import { CoachReviewId } from "./coach.js";
-import { TrackId } from "../confidence.js";
+} from "./decision";
+import { CoachReviewId } from "./coach";
+import { TrackId } from "../confidence";
 
 export const LearningMomentId = brandedId("LearningMomentId");
 export type LearningMomentId = z.infer<typeof LearningMomentId>;

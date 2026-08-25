@@ -6,8 +6,8 @@ import {
   type ProcessingRun,
   type ProcessingStage,
   type ProcessingState,
-} from "../entities/processing.js";
-import type { Instant } from "../primitives.js";
+} from "../entities/processing";
+import type { Instant } from "../primitives";
 
 /* -------------------------------------------------------------------------- */
 /* The transition table                                                        */

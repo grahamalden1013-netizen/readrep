@@ -1,4 +1,4 @@
-import type { AiOperation, ModelTier } from "./operation.js";
+import type { AiOperation, ModelTier } from "./operation";
 
 /** What a provider reports back about one call. */
 export type ProviderResponse = {

@@ -13,8 +13,8 @@ import {
   type Role,
   type TeamId,
   type UserId,
-} from "../entities/identity.js";
-import type { Instant } from "../primitives.js";
+} from "../entities/identity";
+import type { Instant } from "../primitives";
 
 /* -------------------------------------------------------------------------- */
 /* Actions and resources                                                       */

@@ -5,7 +5,7 @@ import {
   PIPELINE,
   pipelineMatchesDomain,
   stageFor,
-} from "./index.js";
+} from "./index";
 
 describe("the pipeline definition", () => {
   it("matches the domain state machine exactly", () => {
