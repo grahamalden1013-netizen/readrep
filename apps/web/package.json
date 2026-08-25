@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "seed": "tsx --conditions=react-server scripts/seed.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
     "test:browser": "node tests/browser-smoke.mjs"
   },
   "dependencies": {
