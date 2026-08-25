@@ -224,11 +224,21 @@ export const localStore: ReadRepStore = {
     createMoment: (moment) => collections.moments.put(moment),
 
     findAssignmentById: (id) => collections.assignments.findById(id),
+    findAssignmentByIdempotencyKey: (key) =>
+      collections.assignments.find((a) => a.idempotencyKey === key),
     listAssignmentsForPlayer: (playerId) =>
       collections.assignments.filter((a) => a.playerId === playerId),
     listAssignmentsForTeam: (teamId) =>
       collections.assignments.filter((a) => a.teamId === teamId),
     createAssignment: (assignment) => collections.assignments.put(assignment),
+    createAssignmentIfAbsent: async (assignment) => {
+      const key = assignment.idempotencyKey;
+      const result = await collections.assignments.putIfAbsent(
+        assignment,
+        (existing) => key !== null && existing.idempotencyKey === key,
+      );
+      return { assignment: result.row, created: result.created };
+    },
     updateAssignment: (assignment) => collections.assignments.put(assignment),
 
     findAttemptById: (id) => collections.attempts.findById(id),

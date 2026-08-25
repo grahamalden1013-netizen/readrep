@@ -6,6 +6,16 @@ import { Card, DemonstrationNotice, SectionLabel } from "@/components/ui/primiti
 export const metadata: Metadata = { title: "Your sessions" };
 export const dynamic = "force-dynamic";
 
+/**
+ * A due date, shown as a soft nudge.
+ *
+ * Rendered on the server so every player sees the same string; a locale-derived
+ * date computed in the browser would differ from the one a coach set and would
+ * mismatch between server and client markup.
+ */
+const formatDue = (iso: string): string =>
+  new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
 export default async function PlayerHome() {
   const home = await getPlayerHome();
 
@@ -45,6 +55,7 @@ export default async function PlayerHome() {
             <p className="text-chalk-400 mt-1 text-sm">
               {next.momentCount} {next.momentCount === 1 ? "rep" : "reps"}
               {next.completedCount > 0 && ` · ${next.completedCount} done`}
+              {next.dueAt && ` · due ${formatDue(next.dueAt)}`}
             </p>
             <Link
               href={`/session/${next.id}`}
@@ -77,6 +88,7 @@ export default async function PlayerHome() {
                     </p>
                     <p className="text-chalk-500 mt-0.5 text-xs">
                       {a.completedCount} of {a.momentCount} complete
+                      {a.dueAt && ` · due ${formatDue(a.dueAt)}`}
                     </p>
                   </div>
                   <span

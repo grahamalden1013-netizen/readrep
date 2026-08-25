@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CandidateReviewDTO } from "@/server/dal/review";
 import { submitReviewAction } from "@/app/(app)/coach/review/actions";
@@ -38,6 +39,7 @@ export function ReviewForm({ candidate }: { candidate: CandidateReviewDTO }) {
   const [showReject, setShowReject] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approved, setApproved] = useState<{ momentId: string | null } | null>(null);
 
   const changed =
     preferredOptionId !== candidate.preferredOptionId ||
@@ -45,6 +47,7 @@ export function ReviewForm({ candidate }: { candidate: CandidateReviewDTO }) {
     teachingCue !== candidate.teachingCue;
 
   const send = async (verdict: "approved" | "rejected" | "needs_more_evidence") => {
+    if (pending) return;
     setPending(true);
     setError(null);
     const result = await submitReviewAction({
@@ -68,9 +71,50 @@ export function ReviewForm({ candidate }: { candidate: CandidateReviewDTO }) {
       setError(result.message);
       return;
     }
+    // An approval publishes a learning moment, and a published moment that
+    // nobody is assigned is not yet doing any work. Stay here and offer the
+    // next step rather than dropping the coach back on the queue.
+    if (verdict === "approved") {
+      setApproved({ momentId: result.momentId });
+      router.refresh();
+      return;
+    }
     router.push("/coach/review");
     router.refresh();
   };
+
+  if (approved) {
+    return (
+      <div
+        className="readrep-rise border-quality-preferred/40 bg-quality-preferred/5 rounded-xl border p-5"
+        role="status"
+      >
+        <p className="text-quality-preferred text-sm font-semibold">
+          Approved and published
+        </p>
+        <p className="text-chalk-200 mt-1.5 text-sm leading-relaxed">
+          This is now a coach-approved learning moment for {candidate.playerName}. It
+          reaches them only once you assign it.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {approved.momentId && (
+            <Link
+              href={`/coach/assign/${approved.momentId}`}
+              className="bg-court-500 text-ink-950 hover:bg-court-400 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors"
+            >
+              Assign to player
+            </Link>
+          )}
+          <Link
+            href="/coach/review"
+            className="border-ink-600 text-chalk-200 hover:border-ink-500 rounded-lg border px-5 py-2.5 text-sm font-medium transition-colors"
+          >
+            Back to the queue
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (candidate.existingReview) {
     return (

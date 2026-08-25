@@ -131,20 +131,57 @@ export const AssignmentStatus = z.enum([
 export type AssignmentStatus = z.infer<typeof AssignmentStatus>;
 
 /** A short set of repetitions a coach gives a player. */
-export const Assignment = z.object({
-  id: AssignmentId,
-  teamId: TeamId,
-  playerId: PlayerId,
-  assignedByUserId: UserId,
-  title: shortText(120),
-  /** Ordered. The blueprint targets 5-10 excellent moments, not volume. */
-  momentIds: z.array(LearningMomentId).min(1).max(20),
-  status: AssignmentStatus,
-  assignedAt: Instant,
-  startedAt: Instant.nullable().default(null),
-  completedAt: Instant.nullable().default(null),
-  revokedAt: Instant.nullable().default(null),
-});
+export const Assignment = z
+  .object({
+    id: AssignmentId,
+    teamId: TeamId,
+    playerId: PlayerId,
+    assignedByUserId: UserId,
+    title: shortText(120),
+    /** Ordered. The blueprint targets 5-10 excellent moments, not volume. */
+    momentIds: z.array(LearningMomentId).min(1).max(20),
+    status: AssignmentStatus,
+
+    /**
+     * Optional soft deadline shown to the player.
+     *
+     * Deliberately soft: nothing expires, nothing locks, and a late session is
+     * still worth doing. A hard deadline on a sixteen-year-old's film homework
+     * would turn a workout into a punishment.
+     */
+    dueAt: Instant.nullable().default(null),
+
+    /**
+     * Dedupes creation.
+     *
+     * A coach who double-clicks, or whose connection retries a POST, must end
+     * up with one assignment rather than two. The client mints this once per
+     * form and the data-access layer returns the existing assignment when it
+     * sees the key again. Nullable because seeded and legacy rows predate it.
+     */
+    idempotencyKey: shortText(120).nullable().default(null),
+
+    assignedAt: Instant,
+    startedAt: Instant.nullable().default(null),
+    completedAt: Instant.nullable().default(null),
+    revokedAt: Instant.nullable().default(null),
+  })
+  .superRefine((a, ctx) => {
+    if (a.dueAt !== null && a.dueAt < a.assignedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dueAt"],
+        message: "an assignment cannot be due before it was assigned",
+      });
+    }
+    if (new Set(a.momentIds).size !== a.momentIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["momentIds"],
+        message: "the same moment must not appear twice in one assignment",
+      });
+    }
+  });
 export type Assignment = z.infer<typeof Assignment>;
 
 /* -------------------------------------------------------------------------- */

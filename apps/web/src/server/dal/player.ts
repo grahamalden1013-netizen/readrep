@@ -110,6 +110,8 @@ export type AssignmentSummaryDTO = {
   completedCount: number;
   status: string;
   assignedAt: string;
+  /** Soft deadline, or null. Nothing expires when it passes. */
+  dueAt: string | null;
 };
 
 export type PlayerHomeDTO = {
@@ -186,6 +188,7 @@ export const getPlayerHome = async (): Promise<PlayerHomeDTO | null> => {
         completedCount: a.momentIds.filter((m) => answered.has(`${a.id}:${m}`)).length,
         status: a.status,
         assignedAt: a.assignedAt,
+        dueAt: a.dueAt,
       })),
   };
 };

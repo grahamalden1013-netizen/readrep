@@ -26,8 +26,11 @@ Requires **Node 22+** and **pnpm 10+**.
 ```bash
 pnpm install
 pnpm --filter @readrep/web seed     # manually authored demonstration data
-pnpm dev                            # http://localhost:3000
+pnpm dev                            # http://localhost:3001/sign-in
 ```
+
+ReadRep runs on **port 3001**, not 3000, so it does not collide with anything
+already using the default.
 
 The seed script prints the sign-in accounts and their password. Start with
 `player@readrep.local` to run a session, then `coach@readrep.local` to review
@@ -55,9 +58,8 @@ The browser smoke test is separate because it needs a running server:
 
 ```bash
 pnpm build
-READREP_SESSION_SECRET=$(openssl rand -hex 32) \
-  pnpm --filter @readrep/web start -p 3100
-pnpm --filter @readrep/web test:browser
+READREP_SESSION_SECRET=$(openssl rand -hex 32) pnpm --filter @readrep/web start
+READREP_BASE_URL=http://localhost:3001 pnpm --filter @readrep/web test:browser
 ```
 
 ---
@@ -72,6 +74,8 @@ Once seeded:
 | Open dev tools before answering | No answer anywhere in the HTML, the RSC payload, or any network response |
 | Answer, then read the reveal | The read graded on a five-point scale, the cue, every option, the coach's cited rule, and the outcome as a **separate** field |
 | Sign in as `coach@readrep.local`, open the review queue | Observed facts and basketball inference in separate columns; which rules the proposal cited and which it missed |
+| Approve a candidate, then **Assign to player** | A teammate is offered but disabled, with the reason shown — the moment is from another player's film |
+| Assign it, then sign back in as the player | The new session is in their queue with its due date |
 | Open `cand-transition-ungrounded` | Labelled *general basketball reasoning*, because the coach has no rule for it |
 | Sign in as `trainer@readrep.local`, open a candidate | Refused — the trainer holds no access grant |
 | Sign in as `outsider@readrep.local`, open the player's session URL | Refused, and indistinguishable from a URL that does not exist |

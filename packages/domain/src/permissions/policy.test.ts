@@ -365,6 +365,66 @@ describe("coaches and administrators", () => {
   });
 });
 
+describe("assigning work", () => {
+  it("lets a coach assign to a consented player on their own team", () => {
+    const coach = actorWith({ role: "coach" });
+    expect(check(coach, "assignment.create", player1).allowed).toBe(true);
+  });
+
+  it("lets a program administrator assign", () => {
+    const admin = actorWith({ role: "program_admin" });
+    expect(check(admin, "assignment.create", player1).allowed).toBe(true);
+  });
+
+  it("refuses a coach of another team", () => {
+    const outsider = actorWith({ role: "coach", teamId: TEAM_B });
+    expect(check(outsider, "assignment.create", player1)).toEqual({
+      allowed: false,
+      reason: "no_membership",
+    });
+  });
+
+  it("refuses a player, a guardian, and a trainer", () => {
+    expect(
+      check(
+        actorWith({ role: "player", playerId: PLAYER_1 }),
+        "assignment.create",
+        player1,
+      ).allowed,
+    ).toBe(false);
+    expect(
+      check(
+        actorWith({ role: "guardian", guardianOf: PLAYER_1 }),
+        "assignment.create",
+        player1,
+      ).allowed,
+    ).toBe(false);
+    expect(
+      check(
+        actorWith({ role: "trainer", grantFor: PLAYER_1 }),
+        "assignment.create",
+        player1,
+      ).allowed,
+    ).toBe(false);
+  });
+
+  it("refuses without assignment consent, whatever the role", () => {
+    const noAssignmentConsent: ConsentLookup = (scope) =>
+      scope === "coach_assignment" ? "not_requested" : "granted";
+    for (const role of ["coach", "program_admin"] as const) {
+      expect(
+        check(actorWith({ role }), "assignment.create", player1, noAssignmentConsent),
+        role,
+      ).toEqual({ allowed: false, reason: "consent_missing" });
+    }
+  });
+
+  it("refuses a suspended coach", () => {
+    const suspended = actorWith({ role: "coach", status: "suspended" });
+    expect(check(suspended, "assignment.create", player1).allowed).toBe(false);
+  });
+});
+
 describe("multiple roles on one team", () => {
   it("takes the union of capabilities across active memberships", () => {
     const coachAndParent: Actor = {

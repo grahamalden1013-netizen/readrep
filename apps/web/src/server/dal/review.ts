@@ -409,13 +409,33 @@ export const submitReview = async (
   return { momentId: moment.id };
 };
 
-/** Assigns approved moments to a player. */
+/**
+ * Assigns approved moments to a player.
+ *
+ * Three checks, and none of them is skippable from the interface:
+ *
+ *  1. `requirePermission` refuses a caller who is not a coach or administrator
+ *     of the team that owns the player, and refuses one whose player has not
+ *     granted `coach_assignment` consent.
+ *  2. The moments are re-read from storage and filtered to those that belong to
+ *     this player on this team. A coach cannot attach another player's film to
+ *     a session by passing its id, and cannot reach across teams at all,
+ *     because a moment id from another team simply is not in the owned set.
+ *  3. The idempotency key returns the assignment a previous identical request
+ *     already created, so a double-click or a retried POST produces one
+ *     assignment rather than two.
+ */
 export const createAssignment = async (params: {
   teamId: TeamId;
   playerId: PlayerId;
   title: string;
   momentIds: string[];
-}): Promise<{ assignmentId: string }> => {
+  dueAt: string | null;
+  idempotencyKey: string;
+}): Promise<{ assignmentId: string; deduplicated: boolean }> => {
+  // Authorize before touching the key. Reading an assignment out of the store
+  // by a key alone, ahead of any permission check, would be an unauthorized
+  // read -- infeasible to exploit with UUID keys, but not a thing to write.
   const actor = await requirePermission({
     action: "assignment.create",
     resource: { type: "player", teamId: params.teamId, playerId: params.playerId },
@@ -426,18 +446,27 @@ export const createAssignment = async (params: {
     },
   });
 
-  // Only moments that belong to this player on this team may be assigned.
   const owned = await localStore.learning.listMomentsForPlayer(params.playerId);
-  const allowed = new Set(
-    owned.filter((m) => m.teamId === params.teamId).map((m) => m.id),
+  const assignable = new Set(
+    owned
+      .filter((m) => m.teamId === params.teamId && m.retiredAt === null)
+      .map((m) => m.id as string),
   );
-  const momentIds = params.momentIds.filter((id) => allowed.has(id as never));
+
+  // Preserve the caller's order, drop anything not theirs, and de-duplicate.
+  const momentIds = [...new Set(params.momentIds)].filter((id) => assignable.has(id));
   if (momentIds.length === 0) {
-    throw new Error("None of those moments belong to this player.");
+    throw new Error(
+      "None of those moments belong to this player, so there is nothing to assign.",
+    );
   }
 
   const now = new Date().toISOString();
-  const assignment = await localStore.learning.createAssignment({
+  if (params.dueAt !== null && params.dueAt < now) {
+    throw new Error("A due date cannot be in the past.");
+  }
+
+  const { assignment, created } = await localStore.learning.createAssignmentIfAbsent({
     id: `assignment-${crypto.randomUUID()}` as never,
     teamId: params.teamId,
     playerId: params.playerId,
@@ -445,11 +474,19 @@ export const createAssignment = async (params: {
     title: params.title,
     momentIds: momentIds as never,
     status: "assigned",
+    dueAt: params.dueAt,
+    idempotencyKey: params.idempotencyKey,
     assignedAt: now,
     startedAt: null,
     completedAt: null,
     revokedAt: null,
   });
+
+  if (!created) {
+    // A retry or a double-click. Nothing was written, so nothing is audited as
+    // a creation; the original creation already has its row.
+    return { assignmentId: assignment.id, deduplicated: true };
+  }
 
   await recordAudit({
     action: "assignment.created",
@@ -458,8 +495,108 @@ export const createAssignment = async (params: {
     outcome: "allowed",
     actorUserId: actor.userId,
     teamId: params.teamId,
-    metadata: { momentCount: momentIds.length },
+    metadata: {
+      momentCount: momentIds.length,
+      requestedCount: params.momentIds.length,
+      hasDueDate: params.dueAt !== null,
+    },
   });
 
-  return { assignmentId: assignment.id };
+  return { assignmentId: assignment.id, deduplicated: false };
+};
+
+/* -------------------------------------------------------------------------- */
+/* Assignment composer                                                         */
+/* -------------------------------------------------------------------------- */
+
+export type AssignCandidatePlayerDTO = {
+  playerId: string;
+  displayName: string;
+  /** False when this player has not granted assignment consent. */
+  mayBeAssigned: boolean;
+  /** Why not, in words a coach can act on. */
+  blockedReason: string | null;
+  /** How many published moments this player has. */
+  momentCount: number;
+};
+
+export type AssignContextDTO = {
+  momentId: string;
+  momentCategory: string;
+  momentCue: string;
+  /** The player the moment's film belongs to. Pre-selected in the interface. */
+  ownerPlayerId: string;
+  ownerPlayerName: string;
+  teamId: string;
+  suggestedTitle: string;
+  players: AssignCandidatePlayerDTO[];
+};
+
+/**
+ * Everything the assign screen needs, for one just-approved moment.
+ *
+ * The roster is returned with each player's eligibility resolved, so the
+ * interface can explain *why* a player cannot be assigned rather than silently
+ * omitting them. Hiding an ineligible player would leave a coach wondering
+ * where someone went; the server still refuses regardless of what the interface
+ * shows.
+ */
+export const getAssignContext = async (
+  momentId: string,
+): Promise<AssignContextDTO | null> => {
+  const moment = await localStore.learning.findMomentById(momentId as never);
+  if (!moment || moment.retiredAt !== null) return null;
+
+  await requirePermission({
+    action: "assignment.view",
+    resource: { type: "player", teamId: moment.teamId, playerId: moment.playerId },
+    audit: {
+      action: "moment.viewed",
+      resourceType: "learning_moment",
+      resourceId: moment.id,
+    },
+  });
+
+  const [owner, roster, game] = await Promise.all([
+    localStore.identity.findPlayerById(moment.playerId),
+    localStore.identity.listPlayersForTeam(moment.teamId),
+    localStore.games.findById(moment.gameId),
+  ]);
+  if (!owner) return null;
+
+  const players: AssignCandidatePlayerDTO[] = [];
+  for (const player of roster) {
+    const [consent, moments] = await Promise.all([
+      localStore.consents.findForPlayerAndScope(player.id, "coach_assignment"),
+      localStore.learning.listMomentsForPlayer(player.id),
+    ]);
+    const published = moments.filter(
+      (m) => m.teamId === moment.teamId && m.retiredAt === null,
+    );
+    const consented = consent?.state === "granted";
+    const ownsThisMoment = player.id === moment.playerId;
+
+    players.push({
+      playerId: player.id,
+      displayName: player.displayName,
+      mayBeAssigned: consented && ownsThisMoment,
+      blockedReason: !consented
+        ? "No assignment consent on file for this player."
+        : !ownsThisMoment
+          ? "This moment is from another player's film."
+          : null,
+      momentCount: published.length,
+    });
+  }
+
+  return {
+    momentId: moment.id,
+    momentCategory: moment.interpretation.category,
+    momentCue: moment.interpretation.visualCue,
+    ownerPlayerId: owner.id,
+    ownerPlayerName: owner.displayName,
+    teamId: moment.teamId,
+    suggestedTitle: game ? `${game.title.split(" \u2014 ")[0]} reads` : "Film reads",
+    players,
+  };
 };

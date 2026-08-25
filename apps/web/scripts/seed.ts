@@ -825,6 +825,9 @@ const seed = async (): Promise<void> => {
     title: "Ball-screen reads — Riverside",
     momentIds: ["moment-pnr-low-tag", "moment-closeout-attack", "moment-low-man-tag"],
     status: "assigned",
+    dueAt: null,
+    // Seeded rows carry no key: the dedupe key belongs to a real request.
+    idempotencyKey: null,
     assignedAt: NOW,
     startedAt: null,
     completedAt: null,

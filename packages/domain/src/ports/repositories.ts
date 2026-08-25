@@ -142,9 +142,21 @@ export type Learning = {
   createMoment(moment: LearningMoment): Promise<LearningMoment>;
 
   findAssignmentById(id: AssignmentId): Promise<Assignment | null>;
+  /** Returns the assignment a previous identical request already created. */
+  findAssignmentByIdempotencyKey(key: string): Promise<Assignment | null>;
   listAssignmentsForPlayer(playerId: PlayerId): Promise<Assignment[]>;
   listAssignmentsForTeam(teamId: TeamId): Promise<Assignment[]>;
   createAssignment(assignment: Assignment): Promise<Assignment>;
+  /**
+   * Creates the assignment unless one already carries the same idempotency key.
+   *
+   * The check and the insert must be atomic. A read-then-write lets two
+   * concurrent submissions both see "absent" and both insert, which is exactly
+   * the duplicate this key exists to prevent.
+   */
+  createAssignmentIfAbsent(
+    assignment: Assignment,
+  ): Promise<{ assignment: Assignment; created: boolean }>;
   updateAssignment(assignment: Assignment): Promise<Assignment>;
 
   findAttemptById(id: PlayerAttemptId): Promise<PlayerAttempt | null>;

@@ -6,8 +6,8 @@
  * no gate. Run it deliberately:
  *
  *   pnpm build
- *   READREP_SESSION_SECRET=$(openssl rand -hex 32) pnpm --filter @readrep/web start -p 3100
- *   pnpm --filter @readrep/web test:browser
+ *   READREP_SESSION_SECRET=$(openssl rand -hex 32) pnpm --filter @readrep/web start
+ *   READREP_BASE_URL=http://localhost:3001 pnpm --filter @readrep/web test:browser
  *
  * The load-bearing check is that the answer is absent from the served HTML,
  * from the RSC flight payload, and from every network response before the
@@ -17,9 +17,18 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
-const BASE = process.env.READREP_BASE_URL ?? "http://localhost:3100";
+const BASE = process.env.READREP_BASE_URL ?? "http://localhost:3001";
 const SHOT = process.env.READREP_SHOT_DIR ?? "./.screenshots";
 const PASSWORD = process.env.READREP_SEED_PASSWORD ?? "ReadRep-dev-2026";
+
+/**
+ * Deliberately distinctive and unique per run.
+ *
+ * The seed ships one assignment so a developer can try the player session
+ * immediately. This title is created only by the assign UI during this run, so
+ * the player-side check below cannot pass on seeded data.
+ */
+const ASSIGNED_TITLE = `Closeout reads ${Date.now()}`;
 
 const pass = [];
 const fail = [];
@@ -257,12 +266,61 @@ async function pressUntilArmed(page, key, attempts = 20) {
   await page.screenshot({ path: `${SHOT}/09-coach-review.png`, fullPage: true });
 
   await page.click('button:has-text("Approve")');
-  await page.waitForURL("**/coach/review", { timeout: 15000 });
+  await page.waitForSelector('a:has-text("Assign to player")', { timeout: 15000 });
+  const approved = await visibleText(page);
+  check("approval shows a success state", has(approved, "Approved and published"));
+  check(
+    "approval says the moment does not reach the player until assigned",
+    has(approved, "reaches them only once you assign it"),
+  );
+  await page.screenshot({ path: `${SHOT}/10-coach-after-approve.png`, fullPage: true });
+
+  /* ---- Assign the approved moment to a player ---- */
+  await page.click('a:has-text("Assign to player")');
+  await page.waitForURL("**/coach/assign/**", { timeout: 15000 });
+  await page.waitForSelector("#assignment-title");
+
+  const assignText = await visibleText(page);
+  check("assign screen names the moment's owner", has(assignText, "Jordan"));
+  check("assign screen lists the rest of the roster", has(assignText, "Taylor"));
+  check(
+    "a teammate is marked unavailable for another player's film",
+    has(assignText, "Unavailable"),
+  );
+  check(
+    "the reason for ineligibility is explained",
+    has(assignText, "another player's film") || has(assignText, "consent"),
+  );
+  check(
+    "an ineligible player cannot be selected",
+    await page.isDisabled('button:has-text("Taylor")'),
+  );
+  check("the due date is marked optional", has(assignText, "optional"));
+
+  await page.fill("#assignment-title", ASSIGNED_TITLE);
+  const due = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  await page.fill("#assignment-due", due);
+  await page.screenshot({ path: `${SHOT}/14-coach-assign.png`, fullPage: true });
+
+  await page.click('[data-testid="assign-submit"]');
+  await page.waitForSelector('[data-testid="assign-success"]', { timeout: 15000 });
+  const assignedText = await visibleText(page);
+  check("assignment shows a clear success state", has(assignedText, "Assigned"));
+  check("the success state names the player", has(assignedText, "Jordan"));
+  check(
+    "the submit control is gone once it has succeeded",
+    (await page.locator('[data-testid="assign-submit"]').count()) === 0,
+  );
+  await page.screenshot({
+    path: `${SHOT}/15-coach-assign-success.png`,
+    fullPage: true,
+  });
+
+  await page.goto(`${BASE}/coach/review`);
   check(
     "an approved candidate leaves the pending queue",
     has(await visibleText(page), "Already decided"),
   );
-  await page.screenshot({ path: `${SHOT}/10-coach-after-approve.png`, fullPage: true });
 
   await page.goto(`${BASE}/coach/review/cand-transition-ungrounded`);
   check(
@@ -288,6 +346,38 @@ async function pressUntilArmed(page, key, attempts = 20) {
   await ctx.close();
 }
 
+/* -------------------- The assignment reaches the player -------------------- */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await signIn(ctx, "player@readrep.local");
+  await page.goto(`${BASE}/player`);
+  const home = await visibleText(page);
+
+  check(
+    "the coach's new assignment appears in the player's queue",
+    has(home, ASSIGNED_TITLE),
+  );
+  check("the due date is shown to the player", /due\s+\w{3}\s+\d{1,2}/i.test(home));
+
+  // Count list entries, not raw text matches: the dashboard legitimately shows
+  // the next session twice, once in "Next up" and once in "All sessions".
+  const entries = await page.locator(`ul li a:has-text("${ASSIGNED_TITLE}")`).count();
+  check(
+    "it was created exactly once, not duplicated",
+    entries === 1,
+    `${entries} entries`,
+  );
+
+  await page.locator(`a:has-text("${ASSIGNED_TITLE}")`).first().click();
+  await page.waitForSelector("#question-heading", { timeout: 15000 });
+  check(
+    "the assigned session opens on a question",
+    (await page.locator("#question-heading").count()) === 1,
+  );
+  await page.screenshot({ path: `${SHOT}/16-player-assigned.png`, fullPage: true });
+  await ctx.close();
+}
+
 /* -------------------- Cross-account isolation -------------------- */
 {
   const ctx = await browser.newContext();
@@ -307,6 +397,14 @@ async function pressUntilArmed(page, key, attempts = 20) {
     "a coach from another team cannot open the candidate",
     (r2?.status() ?? 0) >= 400 || !has(b2, "Observed"),
     `status ${r2?.status()}`,
+  );
+
+  const r3 = await page.goto(`${BASE}/coach/assign/moment-pnr-low-tag`);
+  const b3 = await visibleText(page);
+  check(
+    "a coach from another team cannot open the assign screen",
+    (r3?.status() ?? 0) >= 400 || !has(b3, "Session name"),
+    `status ${r3?.status()}`,
   );
   await page.screenshot({ path: `${SHOT}/13-outsider-denied.png`, fullPage: true });
   await ctx.close();

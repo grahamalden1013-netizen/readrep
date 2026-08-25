@@ -89,6 +89,28 @@ export class JsonCollection<T extends Document> {
     });
   }
 
+  /**
+   * Inserts a row only if no existing row matches.
+   *
+   * The whole check-and-insert runs inside the write lock, so two concurrent
+   * callers cannot both observe "absent" and both insert. This is the local
+   * adapter's stand-in for a UNIQUE index, which is what enforces the same
+   * property in `infra/db/migrations/0002_...sql`.
+   */
+  async putIfAbsent(
+    row: T,
+    matches: (existing: T) => boolean,
+  ): Promise<{ row: T; created: boolean }> {
+    return this.#withLock(async () => {
+      const rows = await this.#load();
+      const existing = [...rows.values()].find(matches);
+      if (existing) return { row: existing, created: false };
+      rows.set(row.id, row);
+      await this.#flush();
+      return { row, created: true };
+    });
+  }
+
   async putMany(newRows: readonly T[]): Promise<T[]> {
     return this.#withLock(async () => {
       const rows = await this.#load();

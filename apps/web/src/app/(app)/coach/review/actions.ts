@@ -64,24 +64,37 @@ const AssignInput = z.object({
   playerId: Id,
   title: z.string().trim().min(1).max(120),
   momentIds: z.array(Id).min(1).max(20),
+  /** ISO-8601 instant, or null. Optional by design: a due date is a nudge. */
+  dueAt: z.string().datetime({ offset: true }).nullable(),
+  /** Minted once per form so a double-click cannot create two assignments. */
+  idempotencyKey: z.string().min(8).max(120),
 });
+
+export type AssignActionResult =
+  | { ok: true; assignmentId: string; deduplicated: boolean }
+  | { ok: false; message: string };
 
 export async function createAssignmentAction(
   input: unknown,
-): Promise<{ ok: boolean; message?: string }> {
+): Promise<AssignActionResult> {
   const parsed = AssignInput.safeParse(input);
-  if (!parsed.success)
-    return { ok: false, message: "That assignment could not be read." };
+  if (!parsed.success) {
+    return { ok: false, message: "That assignment could not be read. Check the form." };
+  }
 
   try {
-    await createAssignment({
+    const result = await createAssignment({
       teamId: parsed.data.teamId as never,
       playerId: parsed.data.playerId as never,
       title: parsed.data.title,
       momentIds: parsed.data.momentIds,
+      dueAt: parsed.data.dueAt,
+      idempotencyKey: parsed.data.idempotencyKey,
     });
+    // The player's dashboard and queue must show this immediately.
+    revalidatePath("/player");
     revalidatePath("/coach");
-    return { ok: true };
+    return { ok: true, ...result };
   } catch (error) {
     return {
       ok: false,

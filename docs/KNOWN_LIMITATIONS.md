@@ -18,6 +18,8 @@ placeholder or a fake success state.
 | Email, invitations, notifications | Not implemented |
 | Consent request flow | Consent records and gates exist; the flow to *ask* a guardian does not |
 | Sign-up | Accounts are created by the seed script only |
+| Revoking or editing an assignment | Creating one works end to end; there is no interface to revoke or reorder it |
+| Assigning several moments at once | The assign screen handles one approved moment at a time |
 
 ## Implemented but provisional
 
