@@ -1,0 +1,21 @@
+{
+  "name": "@readrep/evals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Benchmark fixture schemas, scoring interfaces, and the ReadRep evaluation runner.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "@readrep/domain": "workspace:*",
+    "@readrep/ai": "workspace:*"
+  }
+}
