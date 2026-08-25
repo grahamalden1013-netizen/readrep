@@ -11,7 +11,7 @@
  * Dark-only, deliberately. This is a film-review tool; a single committed
  * surface keeps the video the brightest thing on the screen and keeps the
  * quality palette meaning one thing everywhere. Recorded in
- * docs/adr/0010-design-language.md.
+ * docs/DESIGN.md.
  */
 
 @theme {
