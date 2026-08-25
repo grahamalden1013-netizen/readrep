@@ -235,8 +235,14 @@ async function pressUntilArmed(page, key, attempts = 20) {
   check("queue labels manually authored proposals", has(queue, "Written by hand"));
   await page.screenshot({ path: `${SHOT}/08-coach-queue.png`, fullPage: true });
 
-  await page.click('a[href^="/coach/review/cand-"]');
-  await page.waitForSelector("h1");
+  // Wait for the navigation, not for "h1" -- the queue page has one of its own,
+  // so waiting on the selector alone resolves against the page we are leaving.
+  const candidateHref = await page.getAttribute(
+    'a[href^="/coach/review/cand-"]',
+    "href",
+  );
+  await page.goto(`${BASE}${candidateHref}`, { waitUntil: "networkidle" });
+  await page.waitForSelector("text=Observed", { timeout: 15000 });
   const review = await visibleText(page);
   check("review separates observed facts", has(review, "Observed — what is visible"));
   check("review separates inference", has(review, "Inferred — basketball reasoning"));
