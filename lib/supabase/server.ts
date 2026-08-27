@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { isSupabaseConfigured } from "./config";
 
+/** Returns null when Supabase credentials are not configured. */
 export async function createClient() {
+  if (!isSupabaseConfigured()) return null;
+
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -18,7 +22,7 @@ export async function createClient() {
               cookieStore.set(name, value, options),
             );
           } catch {
-            // setAll called from a Server Component; middleware handles refresh
+            // setAll called from a Server Component; the proxy handles refresh.
           }
         },
       },
