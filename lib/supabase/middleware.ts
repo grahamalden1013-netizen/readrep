@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured } from "./config";
 
-const PROTECTED_PREFIXES = ["/admin", "/profile", "/saved"];
+const PROTECTED_PREFIXES = ["/admin", "/profile"];
 
 /**
  * Refreshes the Supabase session and guards protected routes.

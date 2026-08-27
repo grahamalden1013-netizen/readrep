@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Bot, Sparkles } from "lucide-react";
 import { generateDraftAction } from "@/app/admin/actions";
 import { EMPTY_GENERATE, type GenerateState } from "@/app/admin/action-types";
@@ -15,11 +15,24 @@ import { cn } from "@/lib/utils";
  * Editors enter source material, generate a draft, then edit every field. The
  * generated draft arrives unpublishable by design.
  */
+const EMPTY_BRIEF = {
+  headline: "",
+  topic: "",
+  sourceUrls: "",
+  sourceText: "",
+  notes: "",
+};
+
 export function NewStoryWorkbench({ aiConnected }: { aiConnected: boolean }) {
   const [state, action, pending] = useActionState<GenerateState, FormData>(
     generateDraftAction,
     EMPTY_GENERATE,
   );
+  // Controlled so a submitted form action does not wipe the editor's notes.
+  const [brief, setBrief] = useState(EMPTY_BRIEF);
+  const set = (key: keyof typeof EMPTY_BRIEF) => (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => setBrief((prev) => ({ ...prev, [key]: event.target.value }));
 
   return (
     <div className="space-y-12">
@@ -40,6 +53,8 @@ export function NewStoryWorkbench({ aiConnected }: { aiConnected: boolean }) {
             <Input
               id="headline"
               name="headline"
+              value={brief.headline}
+              onChange={set("headline")}
               placeholder="What the story is about, in one line"
             />
           </div>
@@ -48,6 +63,8 @@ export function NewStoryWorkbench({ aiConnected }: { aiConnected: boolean }) {
             <Input
               id="topic"
               name="topic"
+              value={brief.topic}
+              onChange={set("topic")}
               placeholder="congress, courts, economy, education..."
             />
           </div>
@@ -58,6 +75,8 @@ export function NewStoryWorkbench({ aiConnected }: { aiConnected: boolean }) {
           <Textarea
             id="sourceUrls"
             name="sourceUrls"
+            value={brief.sourceUrls}
+            onChange={set("sourceUrls")}
             rows={4}
             placeholder={"One per line\nPrimary documents first"}
             className="font-mono text-[0.8125rem]"
@@ -69,6 +88,8 @@ export function NewStoryWorkbench({ aiConnected }: { aiConnected: boolean }) {
           <Textarea
             id="sourceText"
             name="sourceText"
+            value={brief.sourceText}
+            onChange={set("sourceText")}
             rows={10}
             placeholder="Paste the bill text, opinion, agency rule or reporting the draft must be grounded in."
           />
@@ -79,6 +100,8 @@ export function NewStoryWorkbench({ aiConnected }: { aiConnected: boolean }) {
           <Textarea
             id="notes"
             name="notes"
+            value={brief.notes}
+            onChange={set("notes")}
             rows={3}
             placeholder="Angle, what to avoid, what readers usually misunderstand about this."
           />
