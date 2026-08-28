@@ -1,26 +1,240 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ==========================================================================
+   NGN — Next Gen News / NGN Arena
+   Design system: premium editorial (cream + charcoal) with a restrained
+   lime/green accent, plus a competitive "Arena" layer.
+   ========================================================================== */
+
+@theme {
+  /* --- Surfaces -------------------------------------------------------- */
+  --color-paper: #faf7f0;
+  --color-paper-raised: #fffdf8;
+  --color-paper-sunken: #f2ede1;
+  --color-paper-inverse: #14161a;
+
+  /* --- Ink ------------------------------------------------------------- */
+  --color-ink: #14161a;
+  --color-ink-soft: #474d55;
+  --color-ink-mute: #767d87;
+  --color-ink-faint: #9aa0a8;
+  --color-ink-inverse: #faf7f0;
+
+  /* --- Rules / borders -------------------------------------------------- */
+  --color-rule: #e2dccd;
+  --color-rule-strong: #cdc5b1;
+  --color-rule-inverse: #2c3037;
+
+  /* --- Brand accent ----------------------------------------------------- */
+  --color-accent: #1f5236;
+  --color-accent-soft: #e6efe6;
+  --color-lime: #c9e94f;
+  --color-lime-deep: #a5c72c;
+
+  /* --- Debate positions (deliberately non-partisan hues) ---------------- */
+  --color-support: #22624a;
+  --color-support-soft: #e4efe9;
+  --color-oppose: #8d4a2c;
+  --color-oppose-soft: #f5e8e0;
+  --color-undecided: #6b6255;
+  --color-undecided-soft: #eeeae0;
+
+  /* --- Status ----------------------------------------------------------- */
+  --color-live: #b3341f;
+  --color-warn: #9a6a10;
+
+  /* --- Divisions -------------------------------------------------------- */
+  --color-bronze: #a2673a;
+  --color-silver: #7f868e;
+  --color-gold: #ac8a26;
+  --color-platinum: #3f7f7c;
+  --color-diamond: #45689f;
+  --color-master: #66459a;
+  --color-champion: #1f5236;
+
+  /* --- Type ------------------------------------------------------------- */
+  --font-serif: var(--font-editorial), ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-numeric), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- Motion ----------------------------------------------------------- */
+  --ease-editorial: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    border-color: var(--color-rule);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern", "liga", "cv05";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Editorial headline stack */
+  h1, h2, h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Tabular figures everywhere numbers matter */
+  .tnum {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-lime);
+    color: var(--color-ink);
+  }
+
+  /* Inputs inherit the editorial palette rather than UA chrome */
+  input, textarea, select, button {
+    font-family: inherit;
+    color: inherit;
+  }
+
+  textarea {
+    field-sizing: content;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* --------------------------------------------------------------------------
+   Components
+   -------------------------------------------------------------------------- */
+
+@layer components {
+  /* Small caps label used across editorial + arena surfaces */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  /* The lime rule that marks an NGN section head */
+  .section-rule {
+    position: relative;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--color-rule-strong);
+  }
+  .section-rule::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 3.5rem;
+    height: 2px;
+    background-color: var(--color-lime-deep);
+  }
+
+  /* Editorial article body */
+  .prose-ngn {
+    font-family: var(--font-serif);
+    font-size: 1.125rem;
+    line-height: 1.75;
+    color: var(--color-ink-soft);
+  }
+  .prose-ngn > * + * {
+    margin-top: 1.25em;
+  }
+  .prose-ngn strong {
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  /* Hairline card */
+  .card {
+    background-color: var(--color-paper-raised);
+    border: 1px solid var(--color-rule);
+    border-radius: 0.25rem;
+  }
+
+  .card-interactive {
+    transition: border-color 180ms var(--ease-editorial),
+                transform 180ms var(--ease-editorial),
+                box-shadow 180ms var(--ease-editorial);
+  }
+  .card-interactive:hover {
+    border-color: var(--color-rule-strong);
+    box-shadow: 0 1px 2px rgb(20 22 26 / 0.04), 0 8px 24px -12px rgb(20 22 26 / 0.16);
+  }
+
+  /* Skeleton shimmer for loading states */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-paper-sunken) 0%,
+      #e9e3d6 50%,
+      var(--color-paper-sunken) 100%
+    );
+    background-size: 200% 100%;
+    animation: ngn-shimmer 1.4s linear infinite;
+    border-radius: 2px;
+  }
+
+  .live-dot {
+    animation: ngn-pulse 2s var(--ease-editorial) infinite;
+  }
+}
+
+@keyframes ngn-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes ngn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes ngn-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.animate-rise {
+  animation: ngn-rise 420ms var(--ease-editorial) both;
+}
+
+/* --------------------------------------------------------------------------
+   Accessibility: honour reduced motion everywhere
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
