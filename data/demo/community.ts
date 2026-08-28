@@ -138,19 +138,19 @@ function toEntry(student: SeedStudent, rank: number): LeaderboardEntry {
 export function nationalLeaderboard(): LeaderboardEntry[] {
   return [...SEED_STUDENTS]
     .sort((a, b) => b.rating - a.rating)
-    .map(toEntry);
+    .map((student, index) => toEntry(student, index + 1));
 }
 
 export function stateLeaderboard(state: string): LeaderboardEntry[] {
   return SEED_STUDENTS.filter((s) => s.state === state)
     .sort((a, b) => b.rating - a.rating)
-    .map(toEntry);
+    .map((student, index) => toEntry(student, index + 1));
 }
 
 export function schoolLeaderboard(schoolSlug: string): LeaderboardEntry[] {
   return SEED_STUDENTS.filter((s) => s.schoolSlug === schoolSlug)
     .sort((a, b) => b.rating - a.rating)
-    .map(toEntry);
+    .map((student, index) => toEntry(student, index + 1));
 }
 
 /** The homepage board is short on purpose — this is not a popularity feed. */
