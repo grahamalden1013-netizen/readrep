@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { login } from "../actions";
+import { Button, Eyebrow } from "@/components/ui/primitives";
+
+export const metadata: Metadata = { title: "Log in" };
 
 export default async function LoginPage({
   searchParams,
@@ -9,50 +13,58 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-16">
-      <form action={login} className="w-full max-w-sm flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Log in</h1>
+    <div className="w-full max-w-sm">
+      <Eyebrow tone="accent">Welcome back</Eyebrow>
+      <h1 className="mt-3 text-3xl leading-tight">Log in</h1>
 
+      <form action={login} className="mt-8 flex flex-col gap-4">
         {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p
+            role="alert"
+            className="rounded-sm border border-oppose/30 bg-oppose-soft px-3 py-2.5 text-sm text-oppose"
+          >
             {error}
           </p>
         )}
 
-        <label className="flex flex-col gap-1 text-sm">
-          Email
+        <label className="block">
+          <span className="text-sm font-medium">Email</span>
           <input
             type="email"
             name="email"
             required
-            className="rounded border border-zinc-300 px-3 py-2"
+            autoComplete="email"
+            className="mt-1.5 h-11 w-full rounded-sm border border-rule bg-paper-raised px-3 text-sm focus:border-ink focus:outline-none"
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          Password
+        <label className="block">
+          <span className="text-sm font-medium">Password</span>
           <input
             type="password"
             name="password"
             required
-            className="rounded border border-zinc-300 px-3 py-2"
+            autoComplete="current-password"
+            className="mt-1.5 h-11 w-full rounded-sm border border-rule bg-paper-raised px-3 text-sm focus:border-ink focus:outline-none"
           />
         </label>
 
-        <button
-          type="submit"
-          className="rounded bg-foreground px-4 py-2 text-background font-medium"
-        >
+        <Button type="submit" size="lg" full className="mt-2">
           Log in
-        </button>
-
-        <p className="text-sm text-zinc-600">
-          No account?{" "}
-          <Link href="/signup" className="font-medium underline">
-            Sign up
-          </Link>
-        </p>
+        </Button>
       </form>
+
+      <p className="mt-6 text-sm text-ink-mute">
+        No account?{" "}
+        <Link href="/signup" className="font-medium text-accent underline-offset-4 hover:underline">
+          Sign up
+        </Link>
+      </p>
+
+      <p className="mt-8 border-t border-rule pt-6 text-xs leading-relaxed text-ink-faint">
+        You do not need an account to read a briefing or follow a debate. One is
+        only required to submit a response.
+      </p>
     </div>
   );
 }

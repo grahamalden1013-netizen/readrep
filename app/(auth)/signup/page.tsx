@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { signup } from "../actions";
+import { Button, Eyebrow } from "@/components/ui/primitives";
+
+export const metadata: Metadata = { title: "Sign up" };
 
 export default async function SignupPage({
   searchParams,
@@ -9,51 +13,67 @@ export default async function SignupPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-16">
-      <form action={signup} className="w-full max-w-sm flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Sign up</h1>
+    <div className="w-full max-w-sm">
+      <Eyebrow tone="accent">Join NGN</Eyebrow>
+      <h1 className="mt-3 text-3xl leading-tight">Create an account</h1>
+      <p className="mt-3 text-sm leading-relaxed text-ink-mute">
+        Email and a password. That is all we ask for — you pick a username next,
+        and everything after that is optional.
+      </p>
 
+      <form action={signup} className="mt-8 flex flex-col gap-4">
         {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p
+            role="alert"
+            className="rounded-sm border border-oppose/30 bg-oppose-soft px-3 py-2.5 text-sm text-oppose"
+          >
             {error}
           </p>
         )}
 
-        <label className="flex flex-col gap-1 text-sm">
-          Email
+        <label className="block">
+          <span className="text-sm font-medium">Email</span>
           <input
             type="email"
             name="email"
             required
-            className="rounded border border-zinc-300 px-3 py-2"
+            autoComplete="email"
+            className="mt-1.5 h-11 w-full rounded-sm border border-rule bg-paper-raised px-3 text-sm focus:border-ink focus:outline-none"
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          Password
+        <label className="block">
+          <span className="text-sm font-medium">Password</span>
           <input
             type="password"
             name="password"
             required
-            minLength={6}
-            className="rounded border border-zinc-300 px-3 py-2"
+            minLength={8}
+            autoComplete="new-password"
+            className="mt-1.5 h-11 w-full rounded-sm border border-rule bg-paper-raised px-3 text-sm focus:border-ink focus:outline-none"
           />
+          <span className="mt-1.5 block text-xs text-ink-faint">
+            At least 8 characters.
+          </span>
         </label>
 
-        <button
-          type="submit"
-          className="rounded bg-foreground px-4 py-2 text-background font-medium"
-        >
-          Sign up
-        </button>
-
-        <p className="text-sm text-zinc-600">
-          Already have an account?{" "}
-          <Link href="/login" className="font-medium underline">
-            Log in
-          </Link>
-        </p>
+        <Button type="submit" size="lg" full className="mt-2">
+          Create account
+        </Button>
       </form>
+
+      <p className="mt-6 text-sm text-ink-mute">
+        Already have an account?{" "}
+        <Link href="/login" className="font-medium text-accent underline-offset-4 hover:underline">
+          Log in
+        </Link>
+      </p>
+
+      <p className="mt-8 border-t border-rule pt-6 text-xs leading-relaxed text-ink-faint">
+        NGN never asks for your birthday, your full name or your address. Your
+        political views are never public, and there is no ideology question
+        anywhere in signup.
+      </p>
     </div>
   );
 }

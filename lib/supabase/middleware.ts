@@ -1,31 +1,41 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isSupabaseConfigured, supabaseAnonKey, supabaseUrl } from "./config";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/coach", "/sessions"];
+/**
+ * Routes that require an account once Supabase is configured.
+ *
+ * Deliberately short. NGN is guest-readable by design: anyone can read a
+ * briefing and follow the whole product without an account. An account is only
+ * required where work is persisted server-side.
+ */
+const PROTECTED_PREFIXES = ["/classroom", "/admin"];
 
 export async function updateSession(request: NextRequest) {
+  // Without a backend the whole app runs in demo mode; there is no session to
+  // refresh and nothing to gate.
+  if (!isSupabaseConfigured()) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
+  const supabase = createServerClient(supabaseUrl(), supabaseAnonKey(), {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        );
       },
     },
-  );
+  });
 
   const {
     data: { user },

@@ -222,7 +222,7 @@ export function DebateRoom({ debate }: { debate: Debate }) {
       {/* --- Arena layout ------------------------------------------------ */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,200px)_minmax(0,1fr)_minmax(0,200px)] lg:gap-8">
         {/* Left: you */}
-        <aside className="order-1 lg:order-none">
+        <aside className="order-1 lg:order-none lg:sticky lg:top-40 lg:self-start">
           <CompetitorCard
             name={profile?.username ?? "You"}
             rating={profile?.rating ?? 1200}
@@ -381,7 +381,7 @@ export function DebateRoom({ debate }: { debate: Debate }) {
         </div>
 
         {/* Right: opponent */}
-        <aside className="order-2 lg:order-none">
+        <aside className="order-2 lg:order-none lg:sticky lg:top-40 lg:self-start">
           <CompetitorCard
             name={activeRun.opponent.username}
             rating={activeRun.opponent.rating}

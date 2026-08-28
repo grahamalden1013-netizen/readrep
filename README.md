@@ -1,36 +1,104 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NGN — Next Gen News
 
-## Getting Started
+**NGN Arena** is a competitive debate platform for students. Read a neutral
+briefing on a real civic question, take a position, argue it against another
+student across structured rounds, get scored on how you argued — then make the
+strongest case for the side you argued against.
 
-First, run the development server:
+> Don't just have an opinion. Defend it.
+
+## The one rule
+
+NGN never decides which political position is correct. It scores how an
+argument is built: evidence, reasoning, rebuttal, clarity, understanding of the
+opposing view, and civility. Two students making opposite arguments of equal
+quality receive equal scores.
+
+That rule is enforced in three places, not just asserted in copy:
+
+- **`lib/ai/neutrality.ts`** — a single shared contract that every AI service
+  composes on top of. It forbids ranking ideologies, forbids letting a viewpoint
+  move a score, requires that party positions be presented with their internal
+  disagreements, and forbids inventing evidence.
+- **The scoring weights** — Understanding Opponent is 20%, exactly equal to
+  Evidence. A student who ignores the other side cannot reach the top of the
+  ladder by arguing forcefully. Civility is only 5%: enough to make contempt
+  costly, not enough to make politeness a strategy.
+- **The data model** — there is no field anywhere that stores a student's
+  ideology in a form another user, a teacher, or the matchmaker can read.
+  Matching uses rating, side and format only.
+
+## Running it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. **No configuration is required.** Both external
+services are optional:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Missing | What happens |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Every AI service falls back to a deterministic local implementation. The judge, perspective judge, explainer, moderation and draft generator all still work — the judge analyses real construction signals (citation markers, causal connectives, term overlap with the opponent, steelman phrasing, incivility) rather than returning canned text. |
+| Supabase env vars | The app runs in demo mode. Arena state lives on the device via `useSyncExternalStore`, and all content is served from `data/demo`. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.example` to `.env.local` to enable either.
 
-## Learn More
+## The critical journey
 
-To learn more about Next.js, take a look at the following resources:
+This works end to end, today, with no configuration:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+homepage → briefing → choose a position → matchmaking → four debate rounds
+  → AI scoring → result + rating change → Switch Sides → Perspective Score
+  → profile updates → leaderboard reflects the new rating
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`scripts/verify-journey.mjs` drives that whole path in a real browser and
+checks every breakpoint from 320px up for horizontal overflow:
 
-## Deploy on Vercel
+```bash
+npm run build && npx next start -p 3100 &
+npm install --no-save playwright
+node scripts/verify-journey.mjs
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/
+  (site)/          Public product — homepage, arena, today, issues, parties,
+                   discuss, rankings, profile, classroom, admin
+  (auth)/          Login and signup
+  actions/         Server actions: AI judging, moderation, admin drafting
+components/
+  arena/  debate/  ratings/  news/  discuss/  classroom/  admin/
+  explain/         The "I Don't Get It" panel
+  providers/       Arena state context
+  shell/  ui/      Navigation, footer, shared primitives
+lib/
+  ai/              Neutrality contract, judge, perspective judge, explainer,
+                   moderation, source analysis, draft generator, provider
+  arena/           Elo, divisions, formats, badges, matchmaking, profile, store
+  search/          Cross-content search index
+  supabase/        SSR client (optional — see above)
+data/demo/         Seeded content. See data/demo/README.md
+supabase/          schema.sql — full schema with RLS policies
+types/ngn.ts       The domain model everything shares
+```
+
+## Design
+
+Premium editorial rather than gamified: cream and charcoal, a restrained lime
+accent, Fraunces for headlines, Inter for interface, JetBrains Mono wherever a
+number needs to hold its column. Debate positions use a teal/clay pair rather
+than red and blue, so the interface never colour-codes a side as a party.
+
+## Demo content
+
+Everything in `data/demo` is seeded. Every debate question and article covers a
+durable civic question rather than a breaking event, so nothing can be mistaken
+for a report of something that happened today. Sources point at real, stable
+government and research pages. Participation figures are invented and carry a
+`DemoBadge` wherever they appear. See `data/demo/README.md`.
