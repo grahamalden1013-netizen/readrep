@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NextRep
 
-## Getting Started
+**Turn your game film into reps.**
 
-First, run the development server:
+NextRep pauses a player's own game film a beat before a decision and asks them to
+make the read again. Then it shows what they actually did, what the better read
+was, and one cue to carry into the next game.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+UPLOAD → IDENTIFY PLAYER → FIND MOMENTS → DECIDE → REVEAL → LEARN
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Running it
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open <http://localhost:3000>. **No configuration is required** — the seeded demo
+game and its five reps ship with the repo, and the whole loop runs end to end
+with no account, no database and no video host.
 
-## Learn More
+| Script              | What it does                          |
+| ------------------- | ------------------------------------- |
+| `npm run dev`       | Dev server (Turbopack)                |
+| `npm run build`     | Production build                      |
+| `npm run lint`      | ESLint                                |
+| `npm run typecheck` | `next typegen` + `tsc --noEmit`       |
+| `npm test`          | Unit tests (`node --test`)            |
 
-To learn more about Next.js, take a look at the following resources:
+## Routes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Route                              | What it is                                              |
+| ---------------------------------- | ------------------------------------------------------- |
+| `/`                                | Landing page                                             |
+| `/dashboard`                       | Player home — next session, last result, focus cue       |
+| `/games/new`                       | Upload → identify player → confirm                       |
+| `/games/[gameId]/processing`       | Analysis stages, or "review required" for uploads        |
+| `/sessions/[sessionId]`            | The five-rep session — the core screen                   |
+| `/sessions/[sessionId]/complete`   | Results                                                  |
+| `/studio`                          | Internal: validate a rep draft against the real schema   |
+| `/login`, `/signup`                | Accounts, when Supabase is configured                    |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How V1 actually works
 
-## Deploy on Vercel
+NextRep does not do automated basketball analysis yet, and the product never
+claims it does.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Reps are authored, not detected.** The five demo reps live in
+  `lib/reps/seed.ts`, validated by Zod at module load. `/studio` validates a
+  draft against the same schema and hands back canonical JSON to paste in.
+- **The processing screen is honest.** For the seeded game it says outright that
+  the reps were prepared by hand. An uploaded game gets no reps and lands in a
+  "review required" state instead of a fabricated analysis.
+- **Uploads record the game, not the file.** No video host is configured, so
+  `/games/new` saves the title, opponent, date and player identity, and says
+  plainly that the file stayed on the device.
+- **Progress lives in a signed cookie.** `lib/store/` keeps the last few games
+  and sessions in an httpOnly cookie, validated on every read. That is what
+  makes the demo work with no account and survive a refresh.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The data model (`lib/reps/schema.ts`) is shaped for the eventual real thing:
+games, player identities, analysis jobs with a `method`, reps with categories
+and timestamps, sessions, responses and skill results.
+`supabase/migrations/0001_nextrep.sql` provisions the same model in Postgres
+with row-level security, for when sessions need to be durable and cross-device.
+
+## The demo film
+
+`public/demo/dragons-film.{webm,mp4}` is an **animated re-creation**, not real
+game footage — it says so in the corner of every frame and in the UI. It is
+rendered from `scripts/demo-film/choreography.mjs`, which is also the source of
+the rep timestamps, so the action at each decision point genuinely matches the
+prompt. `test/seed.test.ts` fails if the two ever drift apart.
+
+To re-render after changing the choreography:
+
+```bash
+mkdir -p /tmp/nextrep-film && cd /tmp/nextrep-film
+npm install playwright ffmpeg-static && npx playwright install chromium
+cd -
+NODE_PATH=/tmp/nextrep-film/node_modules node scripts/demo-film/render.mjs
+```
+
+The output is committed, so this is only needed when the choreography changes.
+
+## Environment
+
+See `.env.example`. Everything in it is optional; nothing is required to run the
+demo. Secrets are server-only — only `NEXT_PUBLIC_SUPABASE_*` reach the browser,
+and both are publishable by design.
+
+## Stack
+
+Next.js 16 (App Router, Turbopack) · React 19 · TypeScript (strict) ·
+Tailwind CSS v4 · Zod · Supabase (optional, auth only in V1)

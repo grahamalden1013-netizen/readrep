@@ -1,54 +1,53 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { Wordmark } from "@/components/wordmark";
+import { getCurrentUser } from "@/lib/supabase/server";
+import { isSupabaseConfigured } from "@/lib/env";
 import { logout } from "../(auth)/actions";
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+/**
+ * Deliberately not an auth gate: the demo has to be playable without an
+ * account. Signing in only adds identity, it does not unlock the product.
+ */
+export default async function AppLayout({ children }: LayoutProps<"/">) {
+  const user = await getCurrentUser();
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <nav className="flex items-center gap-6">
-          <Link href="/dashboard" className="font-semibold tracking-tight">
-            ReadRep
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-sm text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/coach"
-            className="text-sm text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-          >
-            Coach
-          </Link>
-        </nav>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-zinc-500">{user.email}</span>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="text-sm font-medium text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+      <header className="border-b border-ink-800">
+        <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between gap-6 px-6">
+          <div className="flex items-center gap-6">
+            <Wordmark href="/dashboard" />
+            <Link
+              href="/dashboard"
+              className="text-sm text-ink-400 transition-colors hover:text-ink-50"
             >
-              Log out
-            </button>
-          </form>
+              Dashboard
+            </Link>
+          </div>
+
+          {user ? (
+            <div className="flex items-center gap-4">
+              <span className="hidden text-sm text-ink-500 sm:inline">{user.email}</span>
+              <form action={logout}>
+                <button
+                  type="submit"
+                  className="text-sm font-medium text-ink-400 transition-colors hover:text-ink-50"
+                >
+                  Log out
+                </button>
+              </form>
+            </div>
+          ) : isSupabaseConfigured ? (
+            <Link
+              href="/login"
+              className="text-sm font-medium text-ink-400 transition-colors hover:text-ink-50"
+            >
+              Log in
+            </Link>
+          ) : null}
         </div>
       </header>
+
       <main className="flex flex-1 flex-col">{children}</main>
     </div>
   );

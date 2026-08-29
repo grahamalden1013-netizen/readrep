@@ -1,51 +1,51 @@
 import { notFound, redirect } from "next/navigation";
-import { SessionPlayer } from "@/components/player/SessionPlayer";
-import { getSessionForPlayer } from "@/lib/sessions/queries";
+import type { Metadata } from "next";
+import { RepSession } from "@/components/session/rep-session";
+import { toPublicRep, toReveal, type RepReveal } from "@/lib/reps/public-rep";
+import { getGame, getRepsByIds, getSession } from "@/lib/store";
 
-export default async function SessionPage({
-  params,
-}: {
-  params: Promise<{ sessionId: string }>;
-}) {
+export const metadata: Metadata = { title: "Session" };
+
+export default async function SessionPage({ params }: PageProps<"/sessions/[sessionId]">) {
   const { sessionId } = await params;
-  const session = await getSessionForPlayer(sessionId);
+  const session = await getSession(sessionId);
 
   if (!session) {
     notFound();
   }
-
-  if (session.clips.length === 0) {
-    return (
-      <div className="px-6 py-8">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          This session has no clips yet.
-        </p>
-      </div>
-    );
+  if (session.completedAt) {
+    redirect(`/sessions/${sessionId}/complete`);
   }
 
-  if (session.completed_at) {
-    redirect(`/sessions/${sessionId}/results`);
+  const [game, reps] = await Promise.all([
+    getGame(session.gameId),
+    getRepsByIds(session.repIds),
+  ]);
+
+  if (!game?.video || reps.length === 0) {
+    notFound();
   }
 
-  if (!session.video_url) {
-    return (
-      <div className="px-6 py-8">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          This session&apos;s film is unavailable.
-        </p>
-      </div>
-    );
+  // Reveals are only sent for reps the player has already committed to.
+  const answeredIds = new Set(session.responses.map((response) => response.repId));
+  const initialReveals: Record<string, RepReveal> = {};
+  for (const response of session.responses) {
+    const rep = reps.find((item) => item.id === response.repId);
+    if (rep) initialReveals[rep.id] = toReveal(rep, response.choiceId);
   }
+
+  const firstUnanswered = reps.findIndex((rep) => !answeredIds.has(rep.id));
+  const resumed = firstUnanswered === -1;
 
   return (
-    <div className="flex flex-1 flex-col px-6 py-8">
-      <SessionPlayer
-        sessionId={session.id}
-        videoUrl={session.video_url}
-        clips={session.clips}
-        initialAnswered={session.answered}
-      />
-    </div>
+    <RepSession
+      sessionId={session.id}
+      gameTitle={game.title}
+      source={game.video}
+      reps={reps.map(toPublicRep)}
+      initialReveals={initialReveals}
+      initialIndex={resumed ? reps.length - 1 : firstUnanswered}
+      initialPhase={resumed ? "reveal" : "idle"}
+    />
   );
 }
