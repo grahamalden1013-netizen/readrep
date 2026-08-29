@@ -19,3 +19,10 @@ const parsed = supabaseEnvSchema.safeParse({
 export const supabaseEnv: SupabaseEnv | null = parsed.success ? parsed.data : null;
 
 export const isSupabaseConfigured = supabaseEnv !== null;
+
+/**
+ * NextRep's tables live here rather than `public`, so the project can host
+ * other work without name collisions. It must be listed under
+ * Settings -> API -> Exposed schemas for PostgREST to serve it.
+ */
+export const NEXTREP_SCHEMA = "nextrep";

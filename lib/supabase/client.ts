@@ -1,7 +1,9 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { supabaseEnv } from "@/lib/env";
+import { NEXTREP_SCHEMA, supabaseEnv } from "@/lib/env";
 
 export function createClient() {
   if (!supabaseEnv) return null;
-  return createBrowserClient(supabaseEnv.url, supabaseEnv.anonKey);
+  return createBrowserClient(supabaseEnv.url, supabaseEnv.anonKey, {
+    db: { schema: NEXTREP_SCHEMA },
+  });
 }

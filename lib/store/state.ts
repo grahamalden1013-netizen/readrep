@@ -1,21 +1,23 @@
 import { z } from "zod";
-import { gameSchema, trainingSessionSchema, type Game, type TrainingSession } from "@/lib/reps/schema";
+import { trainingSessionSchema, type TrainingSession } from "@/lib/reps/schema";
 
 export const STATE_COOKIE = "nextrep.state";
 
 /** Keeps the serialised cookie comfortably under the 4KB browser limit. */
 export const MAX_STORED_SESSIONS = 4;
-export const MAX_STORED_GAMES = 4;
 
+/**
+ * Only sessions live in the cookie. Games and reps go to the content backend —
+ * real uploaded film must never be stored only on the player's device.
+ */
 export const storeStateSchema = z.object({
   version: z.literal(1),
-  games: z.array(gameSchema),
   sessions: z.array(trainingSessionSchema),
 });
 
 export type StoreState = z.infer<typeof storeStateSchema>;
 
-export const EMPTY_STATE: StoreState = { version: 1, games: [], sessions: [] };
+export const EMPTY_STATE: StoreState = { version: 1, sessions: [] };
 
 export function encodeState(state: StoreState): string {
   return Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
@@ -35,11 +37,6 @@ export function decodeState(raw: string | undefined): StoreState {
   } catch {
     return EMPTY_STATE;
   }
-}
-
-export function upsertGame(state: StoreState, game: Game): StoreState {
-  const games = [game, ...state.games.filter((existing) => existing.id !== game.id)];
-  return { ...state, games: games.slice(0, MAX_STORED_GAMES) };
 }
 
 export function upsertSession(state: StoreState, session: TrainingSession): StoreState {

@@ -25,7 +25,7 @@ export const DEMO_GAME: Game = gameSchema.parse({
     marker: "White leg sleeves",
   },
   video: {
-    kind: "file",
+    kind: "progressive",
     encodings: [
       { src: "/demo/dragons-film.webm", type: 'video/webm; codecs="vp9"' },
       { src: "/demo/dragons-film.mp4", type: 'video/mp4; codecs="avc1.42E01E"' },
@@ -34,6 +34,7 @@ export const DEMO_GAME: Game = gameSchema.parse({
     captionsSrc: "/demo/dragons-film.vtt",
     disclaimer: "Demo film — animated re-creation, not real game footage.",
   },
+  videoAsset: null,
   origin: "demo",
   createdAt: "2026-02-14T21:30:00.000Z",
 });

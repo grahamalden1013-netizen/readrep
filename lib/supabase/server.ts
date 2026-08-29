@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { supabaseEnv } from "@/lib/env";
+import { NEXTREP_SCHEMA, supabaseEnv } from "@/lib/env";
 
 /**
  * Returns null when Supabase is not configured. Callers must handle that:
@@ -12,6 +12,9 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(supabaseEnv.url, supabaseEnv.anonKey, {
+    // NextRep's tables live in their own schema so they cannot collide with
+    // anything else in the project. Auth is unaffected by this setting.
+    db: { schema: NEXTREP_SCHEMA },
     cookies: {
       getAll() {
         return cookieStore.getAll();

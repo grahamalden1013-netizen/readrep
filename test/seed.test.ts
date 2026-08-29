@@ -53,8 +53,10 @@ test("rep timings match the rendered film's choreography", () => {
 });
 
 test("the demo game points at the committed film", () => {
+  const video = DEMO_GAME.video;
+  assert.ok(video && video.kind === "progressive", "the demo ships progressive encodings");
   assert.deepEqual(
-    DEMO_GAME.video?.encodings.map((encoding) => encoding.src),
+    video.encodings.map((encoding) => encoding.src),
     ["/demo/dragons-film.webm", "/demo/dragons-film.mp4"],
   );
   assert.ok(DEMO_GAME.video?.disclaimer, "the demo film must be labelled as a re-creation");

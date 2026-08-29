@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { RepSession } from "@/components/session/rep-session";
 import { toPublicRep, toReveal, type RepReveal } from "@/lib/reps/public-rep";
 import { getGame, getRepsByIds, getSession } from "@/lib/store";
+import { getPlayableVideo } from "@/lib/video/playback";
 
 export const metadata: Metadata = { title: "Session" };
 
@@ -22,7 +23,8 @@ export default async function SessionPage({ params }: PageProps<"/sessions/[sess
     getRepsByIds(session.repIds),
   ]);
 
-  if (!game?.video || reps.length === 0) {
+  const source = game ? getPlayableVideo(game) : null;
+  if (!game || !source || reps.length === 0) {
     notFound();
   }
 
@@ -41,7 +43,7 @@ export default async function SessionPage({ params }: PageProps<"/sessions/[sess
     <RepSession
       sessionId={session.id}
       gameTitle={game.title}
-      source={game.video}
+      source={source}
       reps={reps.map(toPublicRep)}
       initialReveals={initialReveals}
       initialIndex={resumed ? reps.length - 1 : firstUnanswered}

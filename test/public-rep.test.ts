@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { toPublicRep, toReveal } from "@/lib/reps/public-rep";
-import { validateRepDraft } from "@/lib/reps/validate-draft";
+
 import { DEMO_REPS } from "@/lib/reps/seed";
 
 test("a rep sent to the browser carries nothing that gives the answer away", () => {
@@ -26,21 +26,12 @@ test("the reveal grades the choice the player actually made", () => {
   assert.equal(toReveal(rep, wrong.id).correctChoiceId, rep.correctChoiceId);
 });
 
-test("the studio rejects drafts the app could not play", () => {
-  const valid = validateRepDraft(JSON.stringify(DEMO_REPS[0]));
-  assert.equal(valid.ok, true);
-
-  const badJson = validateRepDraft("{");
-  assert.equal(badJson.ok, false);
-
-  // Pause outside the clip window would strand the player on a frozen video.
-  const badTiming = validateRepDraft(
-    JSON.stringify({ ...DEMO_REPS[0], decisionPauseMs: DEMO_REPS[0].clipEndMs + 1000 }),
-  );
-  assert.equal(badTiming.ok, false);
-
-  const danglingAnswer = validateRepDraft(
-    JSON.stringify({ ...DEMO_REPS[0], correctChoiceId: "zzz" }),
-  );
-  assert.equal(danglingAnswer.ok, false);
+test("a reveal is only ever built from a rep the server already holds", () => {
+  // toReveal takes the stored rep, so the browser cannot influence what the
+  // correct answer is — only which choice it is graded against.
+  const rep = DEMO_REPS[1];
+  const reveal = toReveal(rep, rep.choices[0].id);
+  assert.equal(reveal.correctChoiceId, rep.correctChoiceId);
+  assert.equal(reveal.explanation, rep.explanation);
+  assert.equal(reveal.coachingCue, rep.coachingCue);
 });

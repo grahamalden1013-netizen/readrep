@@ -1,17 +1,21 @@
 "use client";
 
-import { useId, useRef, useState, type DragEvent } from "react";
+import { useCallback, useId, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/panel";
-import { createUploadedGame } from "@/lib/actions/game";
-
-const ACCEPTED = [".mp4", ".mov", ".m4v", ".webm"];
-const MAX_BYTES = 6 * 1024 * 1024 * 1024;
+import {
+  cancelGameUpload,
+  markUploadFinished,
+  markUploadStarted,
+  startGameUpload,
+} from "@/lib/actions/upload";
+import { ACCEPTED_VIDEO_EXTENSIONS, MAX_UPLOAD_BYTES } from "@/lib/video/provider";
 
 const TEAM_COLORS = ["White", "Black", "Red", "Blue", "Green", "Gold", "Grey"];
+const ACCEPTED = [...ACCEPTED_VIDEO_EXTENSIONS];
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 function formatBytes(bytes: number) {
   const gb = bytes / 1024 ** 3;
@@ -19,15 +23,7 @@ function formatBytes(bytes: number) {
   return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
 }
 
-function Field({
-  label,
-  children,
-  hint,
-}: {
-  label: string;
-  children: React.ReactNode;
-  hint?: string;
-}) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="label-caps text-ink-400">{label}</span>
@@ -40,10 +36,56 @@ function Field({
 const inputClass =
   "h-10 rounded-panel border border-ink-600 bg-ink-950 px-3 text-sm text-ink-50 placeholder:text-ink-600 focus:border-ink-400";
 
-export function UploadFlow({ demoGameId }: { demoGameId: string }) {
+/**
+ * Puts the file on the video host directly from the browser.
+ *
+ * The bytes go to the provider's signed URL, never through a server function —
+ * a full game is gigabytes, and no serverless request body should carry that.
+ * XHR rather than fetch, because only XHR reports upload progress.
+ */
+function putWithProgress(
+  url: string,
+  file: File,
+  onProgress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url, true);
+    request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total);
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`The video host rejected the upload (${request.status}).`));
+    };
+    request.onerror = () => reject(new Error("The connection to the video host failed."));
+    request.onabort = () => reject(new DOMException("Aborted", "AbortError"));
+
+    signal.addEventListener("abort", () => request.abort(), { once: true });
+    request.send(file);
+  });
+}
+
+export function UploadFlow({
+  demoGameId,
+  uploadsEnabled,
+  uploadsDisabledReason,
+  fixtureMode,
+  storageLabel,
+}: {
+  demoGameId: string;
+  uploadsEnabled: boolean;
+  uploadsDisabledReason: string | null;
+  fixtureMode: boolean;
+  storageLabel: string;
+}) {
   const router = useRouter();
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
@@ -58,18 +100,24 @@ export function UploadFlow({ demoGameId }: { demoGameId: string }) {
   const [opponent, setOpponent] = useState("");
   const [playedOn, setPlayedOn] = useState("");
 
-  const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gameId, setGameId] = useState<string | null>(null);
 
   function acceptFile(candidate: File | undefined) {
     if (!candidate) return;
     const name = candidate.name.toLowerCase();
-    if (!ACCEPTED.some((ext) => name.endsWith(ext))) {
+    if (!ACCEPTED.some((extension) => name.endsWith(extension))) {
       setFileError(`That file type is not supported. Use ${ACCEPTED.join(", ")}.`);
       return;
     }
-    if (candidate.size > MAX_BYTES) {
+    if (candidate.size > MAX_UPLOAD_BYTES) {
       setFileError(`That file is ${formatBytes(candidate.size)}. The limit is 6 GB.`);
+      return;
+    }
+    if (candidate.size === 0) {
+      setFileError("That file is empty.");
       return;
     }
     setFileError(null);
@@ -82,33 +130,56 @@ export function UploadFlow({ demoGameId }: { demoGameId: string }) {
     acceptFile(event.dataTransfer.files[0]);
   }
 
-  async function submit() {
-    setSubmitting(true);
-    setError(null);
+  const upload = useCallback(async () => {
+    if (!file) return;
 
-    const result = await createUploadedGame({
+    setStep(4);
+    setUploading(true);
+    setError(null);
+    setProgress(0);
+
+    const started = await startGameUpload({
       title: title.trim(),
       opponent: opponent.trim(),
       playedOn,
       identity: {
         jerseyNumber: jerseyNumber.trim(),
         teamColor,
-        marker: marker.trim() || undefined,
+        ...(marker.trim() ? { marker: marker.trim() } : {}),
       },
-      fileName: file?.name,
+      fileName: file.name,
     });
 
-    if (!result.ok) {
-      setSubmitting(false);
-      setError(result.error);
+    if (!started.ok) {
+      setUploading(false);
+      setError(started.error);
       return;
     }
 
-    router.push(`/games/${result.data.gameId}/processing`);
-  }
+    setGameId(started.data.gameId);
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      await markUploadStarted(started.data.gameId);
+      await putWithProgress(started.data.uploadUrl, file, setProgress, controller.signal);
+      await markUploadFinished(started.data.gameId);
+      router.push(`/games/${started.data.gameId}/processing`);
+    } catch (cause) {
+      setUploading(false);
+      if (cause instanceof DOMException && cause.name === "AbortError") {
+        await cancelGameUpload(started.data.gameId);
+        setGameId(null);
+        setStep(3);
+        setError("Upload cancelled.");
+        return;
+      }
+      setError(cause instanceof Error ? cause.message : "The upload failed.");
+    }
+  }, [file, jerseyNumber, marker, opponent, playedOn, router, teamColor, title]);
 
   const step2Valid = jerseyNumber.trim().length > 0;
-  const step3Valid = title.trim() && opponent.trim() && playedOn;
+  const step3Valid = Boolean(title.trim() && opponent.trim() && playedOn);
 
   return (
     <div className="flex flex-col gap-8">
@@ -122,6 +193,24 @@ export function UploadFlow({ demoGameId }: { demoGameId: string }) {
           </li>
         ))}
       </ol>
+
+      {!uploadsEnabled ? (
+        <p
+          role="alert"
+          className="rounded-panel border border-ink-700 bg-ink-900 px-4 py-3 text-sm leading-relaxed text-ink-300"
+        >
+          {uploadsDisabledReason}
+        </p>
+      ) : fixtureMode ? (
+        <p className="rounded-panel border border-ink-700 bg-ink-900 px-4 py-3 text-sm leading-relaxed text-ink-300">
+          <span className="label-caps mr-2 rounded-sm bg-ink-700 px-2 py-1 text-ink-100">
+            Fixture mode
+          </span>
+          Mux is not configured. Your file is streamed and measured so progress is real, then
+          discarded — the game will play the committed demo film, not your footage. Reps you author
+          are stored in {storageLabel}.
+        </p>
+      ) : null}
 
       {step === 1 ? (
         <section className="flex flex-col gap-4">
@@ -146,7 +235,11 @@ export function UploadFlow({ demoGameId }: { demoGameId: string }) {
               className="sr-only"
               onChange={(event) => acceptFile(event.target.files?.[0])}
             />
-            <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+            <Button
+              variant="secondary"
+              disabled={!uploadsEnabled}
+              onClick={() => fileInputRef.current?.click()}
+            >
               Choose a file
             </Button>
           </div>
@@ -158,20 +251,15 @@ export function UploadFlow({ demoGameId }: { demoGameId: string }) {
           ) : null}
 
           {file ? (
-            <div className="flex flex-col gap-2 rounded-panel border border-ink-700 bg-ink-900 p-4">
+            <div className="rounded-panel border border-ink-700 bg-ink-900 p-4">
               <p className="text-sm text-ink-100">
                 {file.name} <span className="text-ink-500">· {formatBytes(file.size)}</span>
-              </p>
-              <p className="text-sm leading-relaxed text-ink-500">
-                Video hosting is not configured in this environment, so the file stays on your
-                device. NextRep records the game and your player identity, and the game is queued
-                for review.
               </p>
             </div>
           ) : null}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => setStep(2)} disabled={!file}>
+            <Button onClick={() => setStep(2)} disabled={!file || !uploadsEnabled}>
               Continue
             </Button>
             <ButtonLink href={`/games/${demoGameId}/processing`} variant="ghost">
@@ -281,13 +369,67 @@ export function UploadFlow({ demoGameId }: { demoGameId: string }) {
           ) : null}
 
           <div className="flex gap-3">
-            <Button onClick={() => void submit()} disabled={!step3Valid || submitting} size="lg">
-              {submitting ? "Saving…" : "Analyze game"}
+            <Button onClick={() => void upload()} disabled={!step3Valid || !uploadsEnabled} size="lg">
+              Upload and analyze
             </Button>
             <Button variant="ghost" onClick={() => setStep(2)}>
               Back
             </Button>
           </div>
+        </section>
+      ) : null}
+
+      {step === 4 ? (
+        <section className="flex flex-col gap-4">
+          <SectionLabel>Uploading</SectionLabel>
+          <p className="text-sm text-ink-300">
+            {file?.name} · {file ? formatBytes(file.size) : ""}
+          </p>
+
+          <div
+            className="h-1 w-full overflow-hidden rounded-full bg-ink-800"
+            role="progressbar"
+            aria-valuenow={Math.round(progress * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Upload progress"
+          >
+            <div
+              className="h-full bg-lime-accent transition-[width] duration-200"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
+          </div>
+          <p className="font-mono text-xs text-ink-500 tabular-nums">
+            {Math.round(progress * 100)}%
+          </p>
+
+          {error ? (
+            <div role="alert" className="flex flex-col items-start gap-3">
+              <p className="text-sm text-signal-bad">{error}</p>
+              <div className="flex gap-3">
+                <Button onClick={() => void upload()}>Retry upload</Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setError(null);
+                    setStep(3);
+                  }}
+                >
+                  Back
+                </Button>
+              </div>
+            </div>
+          ) : uploading ? (
+            <div>
+              <Button variant="ghost" onClick={() => abortRef.current?.abort()}>
+                Cancel upload
+              </Button>
+            </div>
+          ) : null}
+
+          {gameId && !uploading && !error ? (
+            <ButtonLink href={`/games/${gameId}/processing`}>Continue</ButtonLink>
+          ) : null}
         </section>
       ) : null}
     </div>

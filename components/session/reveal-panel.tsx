@@ -24,12 +24,14 @@ export function RevealPanel({
   isLastRep,
   isFinishing,
   onNext,
+  finishLabel = "See results",
 }: {
   rep: PublicRep;
   reveal: RepReveal;
   isLastRep: boolean;
   isFinishing: boolean;
   onNext: () => void;
+  finishLabel?: string;
 }) {
   return (
     <div
@@ -68,7 +70,7 @@ export function RevealPanel({
 
       <div>
         <Button onClick={onNext} disabled={isFinishing} size="lg">
-          {isLastRep ? (isFinishing ? "Finishing…" : "See results") : "Next rep"}
+          {isLastRep ? (isFinishing ? "Finishing…" : finishLabel) : "Next rep"}
         </Button>
       </div>
     </div>
