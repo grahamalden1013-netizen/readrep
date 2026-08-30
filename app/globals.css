@@ -16,6 +16,21 @@
   --color-lime-accent: #ccff00;
   --color-lime-accent-dim: #a8d400;
 
+  /*
+   * Light surface, used by the public homepage. The app itself stays dark, so
+   * the product UI reads as a real artifact sitting on paper.
+   * Every text pair below clears WCAG AA against paper (>= 4.6:1).
+   */
+  --color-paper: #f5f2ec;
+  --color-paper-card: #fbf9f5;
+  --color-graphite-950: #16130f;
+  --color-graphite-700: #4a443c;
+  --color-graphite-500: #6e665b;
+  --color-rule: #e0dad0;
+  --color-rule-strong: #cfc7b9;
+  --color-court: #c2410c;
+  --color-court-deep: #9a3412;
+
   --color-signal-good: #63e08a;
   --color-signal-bad: #ff6b5e;
 
@@ -52,6 +67,55 @@ body {
   color: var(--color-ink-950);
 }
 
+/*
+ * Opt-in light surface. The document stays dark by default because the app is
+ * dark; only the public homepage opts in. The :has() rule carries the paper
+ * colour up to <html> so overscroll matches — where :has() is unsupported the
+ * page itself is still correct, only the rubber-band gutter is not.
+ */
+html:has(.surface-light),
+body:has(.surface-light) {
+  background: var(--color-paper);
+}
+
+.surface-light {
+  background: var(--color-paper);
+  color: var(--color-graphite-950);
+  color-scheme: light;
+}
+
+.surface-light :focus-visible {
+  outline-color: var(--color-court-deep);
+}
+
+.surface-light ::selection {
+  background: var(--color-court);
+  color: #fff;
+}
+
+/*
+ * Retints an embedded product frame to the page's accent. Only the custom
+ * property is swapped, so every `*-lime-accent` utility inside follows without
+ * the components knowing. The app's own screens are untouched.
+ * #ea580c clears AA against both the chip text (5.5:1) and the frame (5.2:1).
+ */
+.accent-court {
+  --color-lime-accent: #ea580c;
+  --color-lime-accent-dim: #c2410c;
+}
+
+/* The product UI keeps its own dark treatment when embedded on paper. */
+.surface-dark {
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+  color-scheme: dark;
+}
+
+.surface-dark :focus-visible {
+  outline-color: var(--color-lime-accent);
+}
+
+/* Editorial eyebrow: small, wide-tracked, uppercase. */
 @utility label-caps {
   font-size: 0.6875rem;
   line-height: 1;

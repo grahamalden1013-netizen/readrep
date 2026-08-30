@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { VideoSurface, type VideoSurfaceHandle } from "@/components/video/video-surface";
+import {
+  VideoSurface,
+  type VideoSurfaceHandle,
+} from "@/components/video/video-surface";
 import { RevealPanel } from "./reveal-panel";
 import { SKILL_CATEGORY_LABELS, type VideoSource } from "@/lib/reps/schema";
 import type { PublicRep, RepReveal } from "@/lib/reps/public-rep";
 
-type Phase = "idle" | "watching" | "deciding" | "resuming" | "reveal";
+export type RepPhase = "idle" | "watching" | "deciding" | "resuming" | "reveal";
 
 const CHOICE_KEYS = ["1", "2", "3", "4"];
 
@@ -34,6 +37,8 @@ export function RepPlayer({
   onFinish,
   finishLabel,
   isFinishing = false,
+  onPhaseChange,
+  promptAs: Prompt = "h1",
 }: {
   gameTitle: string;
   source: VideoSource;
@@ -45,23 +50,41 @@ export function RepPlayer({
   onFinish: () => void | Promise<void>;
   finishLabel: string;
   isFinishing?: boolean;
+  /** Lets a host surface label the stage without owning any of the loop. */
+  onPhaseChange?: (phase: RepPhase) => void;
+  /** The prompt is the page heading in a session, but not when embedded. */
+  promptAs?: "h1" | "h2" | "h3";
 }) {
   const videoRef = useRef<VideoSurfaceHandle>(null);
 
   const [index, setIndex] = useState(initialIndex);
-  const [phase, setPhase] = useState<Phase>(initialPhase);
-  const [reveals, setReveals] = useState<Record<string, RepReveal>>(initialReveals);
+  const [phase, setPhase] = useState<RepPhase>(initialPhase);
+  const [reveals, setReveals] =
+    useState<Record<string, RepReveal>>(initialReveals);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [videoFailed, setVideoFailed] = useState(false);
   const [captionsOn, setCaptionsOn] = useState(false);
+
+  // Held in a ref so a parent re-render cannot restart the notification effect.
+  const onPhaseChangeRef = useRef(onPhaseChange);
+  useEffect(() => {
+    onPhaseChangeRef.current = onPhaseChange;
+  });
+  useEffect(() => {
+    onPhaseChangeRef.current?.(phase);
+  }, [phase]);
 
   const rep = reps[index];
   const reveal = reveals[rep.id] ?? null;
   const isLastRep = index === reps.length - 1;
 
   const stopAtMs =
-    phase === "watching" ? rep.decisionPauseMs : phase === "resuming" ? rep.clipEndMs : null;
+    phase === "watching"
+      ? rep.decisionPauseMs
+      : phase === "resuming"
+        ? rep.clipEndMs
+        : null;
 
   const startRep = useCallback(
     async (nextIndex: number) => {
@@ -75,7 +98,11 @@ export function RepPlayer({
 
   const handleReachedStop = useCallback(() => {
     setPhase((current) =>
-      current === "watching" ? "deciding" : current === "resuming" ? "reveal" : current,
+      current === "watching"
+        ? "deciding"
+        : current === "resuming"
+          ? "reveal"
+          : current,
     );
   }, []);
 
@@ -112,7 +139,11 @@ export function RepPlayer({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
+      if (
+        target &&
+        ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)
+      )
+        return;
 
       if (phase === "deciding") {
         const slot = CHOICE_KEYS.indexOf(event.key);
@@ -171,8 +202,7 @@ export function RepPlayer({
             />
 
             {phase === "idle" && !videoFailed ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-ink-950/70 px-6 text-center">
-                <p className="text-sm text-ink-300">{rep.situation}</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-ink-950/70 px-6 text-center">
                 <Button size="lg" onClick={() => void startRep(index)}>
                   Start rep {index + 1}
                 </Button>
@@ -181,9 +211,12 @@ export function RepPlayer({
 
             {videoFailed ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink-950/90 px-6 text-center">
-                <p className="text-sm font-medium text-ink-100">The film could not be loaded.</p>
+                <p className="text-sm font-medium text-ink-100">
+                  The film could not be loaded.
+                </p>
                 <p className="max-w-sm text-sm text-ink-400">
-                  Check your connection and try again — your answers so far are saved.
+                  Check your connection and try again — your answers so far are
+                  saved.
                 </p>
                 <Button
                   variant="secondary"
@@ -207,7 +240,9 @@ export function RepPlayer({
                 <Button
                   variant="ghost"
                   onClick={() =>
-                    void videoRef.current?.playFrom(rep.clipStartMs).then(() => setPhase("watching"))
+                    void videoRef.current
+                      ?.playFrom(rep.clipStartMs)
+                      .then(() => setPhase("watching"))
                   }
                 >
                   Replay clip
@@ -235,14 +270,16 @@ export function RepPlayer({
         {/* Reserved height keeps the layout from jumping as the panel swaps. */}
         <div className="lg:min-h-[20rem]">
           {phase === "watching" || phase === "idle" ? (
-            <p className="text-sm leading-relaxed text-ink-400">{rep.situation}</p>
+            <p className="text-sm leading-relaxed text-ink-400">
+              {rep.situation}
+            </p>
           ) : null}
 
           {phase === "deciding" ? (
             <div className="flex flex-col gap-4">
-              <h1 className="text-lg leading-snug font-medium text-ink-50 sm:text-xl">
+              <Prompt className="text-lg leading-snug font-medium text-ink-50 sm:text-xl">
                 {rep.prompt}
-              </h1>
+              </Prompt>
               <ul className="flex flex-col gap-2">
                 {rep.choices.map((choice, choiceIndex) => (
                   <li key={choice.id}>
@@ -261,13 +298,16 @@ export function RepPlayer({
                 ))}
               </ul>
               <p className="hidden text-xs text-ink-600 sm:block">
-                Press {CHOICE_KEYS.slice(0, rep.choices.length).join("–")} to choose.
+                Press {CHOICE_KEYS.slice(0, rep.choices.length).join("–")} to
+                choose.
               </p>
             </div>
           ) : null}
 
           {phase === "resuming" ? (
-            <p className="text-sm text-ink-400">Watching what actually happened…</p>
+            <p className="text-sm text-ink-400">
+              Watching what actually happened…
+            </p>
           ) : null}
 
           {phase === "reveal" && reveal ? (

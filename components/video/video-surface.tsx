@@ -33,6 +33,8 @@ export type VideoSurfaceProps = {
   stopAtMs?: number | null;
   onReachedStop?: () => void;
   onLoadedMetadata?: (durationMs: number) => void;
+  /** Fires when the element has enough data to paint the current frame. */
+  onCanPlay?: () => void;
   onTimeUpdate?: (currentMs: number) => void;
   onPlayStateChange?: (paused: boolean) => void;
   onError?: (message: string) => void;
@@ -53,6 +55,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
     stopAtMs = null,
     onReachedStop,
     onLoadedMetadata,
+    onCanPlay,
     onTimeUpdate,
     onPlayStateChange,
     onError,
@@ -70,12 +73,33 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
   // reinstalled by a parent re-render.
   const onReachedStopRef = useRef(onReachedStop);
   const onTimeUpdateRef = useRef(onTimeUpdate);
+  const onCanPlayRef = useRef(onCanPlay);
+  const onLoadedMetadataRef = useRef(onLoadedMetadata);
   const [isBuffering, setIsBuffering] = useState(false);
 
   useEffect(() => {
     onReachedStopRef.current = onReachedStop;
     onTimeUpdateRef.current = onTimeUpdate;
+    onCanPlayRef.current = onCanPlay;
+    onLoadedMetadataRef.current = onLoadedMetadata;
   });
+
+  /*
+   * A cached file can reach HAVE_CURRENT_DATA before React attaches its media
+   * listeners, in which case `loadedmetadata` and `canplay` are missed
+   * entirely and the host never learns the video is usable. Catch up on mount.
+   */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA && Number.isFinite(video.duration)) {
+      onLoadedMetadataRef.current?.(video.duration * 1000);
+    }
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      onCanPlayRef.current?.();
+    }
+  }, []);
 
   useEffect(() => {
     stopRef.current = stopAtMs;
@@ -211,7 +235,10 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
           onPlayStateChange?.(false);
         }}
         onPause={() => onPlayStateChange?.(true)}
-        onCanPlay={() => setIsBuffering(false)}
+        onCanPlay={() => {
+          setIsBuffering(false);
+          onCanPlay?.();
+        }}
         onLoadedMetadata={(event) => {
           const duration = event.currentTarget.duration;
           if (Number.isFinite(duration)) onLoadedMetadata?.(duration * 1000);

@@ -71,6 +71,7 @@ export function RepPreviewModal({
           initialPhase="idle"
           onAnswer={onAnswer}
           onFinish={onClose}
+          promptAs="h2"
           finishLabel="Close preview"
         />
       </div>
