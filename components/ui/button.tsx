@@ -1,30 +1,47 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "court" | "outline";
-type Size = "md" | "lg";
+/*
+ * Three variants, and they are shell-agnostic: every colour is a role token, so
+ * the same `primary` button is near-black on the light shells and near-white in
+ * the film room without any caller opting in.
+ *
+ * There is deliberately no accent-filled button. Amber marks the freeze and the
+ * decision — spending it on navigation would make it mean nothing.
+ */
+type Variant = "primary" | "secondary" | "ghost";
+type Size = "sm" | "md" | "lg";
 
-const base =
-  "inline-flex items-center justify-center gap-2 rounded-panel font-semibold tracking-tight transition-[color,background-color,border-color] duration-150 disabled:cursor-not-allowed disabled:opacity-45";
+const base = [
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-control",
+  "font-semibold tracking-[-0.005em] whitespace-nowrap",
+  // Explicit properties: `transition-colors` also animates outline-color, which
+  // makes the focus ring fade in from the text colour.
+  "transition-[color,background-color,border-color] duration-150 ease-signal",
+  "disabled:cursor-not-allowed disabled:opacity-40",
+].join(" ");
 
 const variants: Record<Variant, string> = {
-  // Dark surfaces (the app).
-  primary: "bg-lime-accent text-ink-950 hover:bg-lime-accent-dim",
-  secondary: "border border-ink-600 text-ink-100 hover:border-ink-400 hover:bg-ink-850",
-  ghost: "text-ink-300 hover:text-ink-50",
-  // Light surfaces (the public homepage).
-  court: "bg-court text-white hover:bg-court-deep",
-  outline:
-    "border border-graphite-950/25 text-graphite-950 hover:border-graphite-950/60 hover:bg-graphite-950/[0.04]",
+  primary: "bg-solid text-on-solid hover:bg-solid-hover",
+  secondary:
+    "border border-line-strong bg-surface text-fg hover:border-fg-faint hover:bg-raised",
+  ghost: "text-fg-soft hover:bg-raised hover:text-fg",
 };
 
 const sizes: Record<Size, string> = {
+  sm: "h-8 px-3 text-[0.8125rem]",
   md: "h-10 px-4 text-sm",
-  lg: "h-12 px-6 text-[0.9375rem]",
+  lg: "h-11 px-5 text-[0.9375rem]",
 };
 
-export function buttonClass(variant: Variant = "primary", size: Size = "md", extra = "") {
-  return [base, variants[variant], sizes[size], extra].filter(Boolean).join(" ");
+export function buttonClass(
+  variant: Variant = "primary",
+  size: Size = "md",
+  extra = "",
+) {
+  return [base, variants[variant], sizes[size], extra]
+    .filter(Boolean)
+    .join(" ");
 }
 
 type ButtonProps = ComponentProps<"button"> & {
@@ -33,7 +50,13 @@ type ButtonProps = ComponentProps<"button"> & {
   children: ReactNode;
 };
 
-export function Button({ variant, size, className, children, ...rest }: ButtonProps) {
+export function Button({
+  variant,
+  size,
+  className,
+  children,
+  ...rest
+}: ButtonProps) {
   return (
     <button className={buttonClass(variant, size, className)} {...rest}>
       {children}
@@ -47,7 +70,13 @@ type ButtonLinkProps = ComponentProps<typeof Link> & {
   children: ReactNode;
 };
 
-export function ButtonLink({ variant, size, className, children, ...rest }: ButtonLinkProps) {
+export function ButtonLink({
+  variant,
+  size,
+  className,
+  children,
+  ...rest
+}: ButtonLinkProps) {
   return (
     <Link className={buttonClass(variant, size, className)} {...rest}>
       {children}

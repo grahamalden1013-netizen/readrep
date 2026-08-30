@@ -50,25 +50,33 @@ export function RepSession({
     router.push(`/sessions/${sessionId}/complete`);
   }, [router, sessionId]);
 
+  /*
+   * `my-auto` rather than `justify-center`: the film room centres itself when
+   * there is room and behaves like a normal block when the reveal makes the
+   * content taller than the viewport, so the top never becomes unreachable.
+   */
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
-      <RepPlayer
-        gameTitle={gameTitle}
-        source={source}
-        reps={reps}
-        initialReveals={initialReveals}
-        initialIndex={initialIndex}
-        initialPhase={initialPhase}
-        onAnswer={onAnswer}
-        onFinish={onFinish}
-        finishLabel="See results"
-        isFinishing={isFinishing}
-      />
-      {finishError ? (
-        <p role="alert" className="text-sm text-signal-bad">
-          {finishError}
-        </p>
-      ) : null}
+    <div className="page-shell flex flex-1 flex-col py-6 sm:py-8">
+      <div className="my-auto flex w-full flex-col gap-5">
+        <RepPlayer
+          gameTitle={gameTitle}
+          source={source}
+          reps={reps}
+          initialReveals={initialReveals}
+          initialIndex={initialIndex}
+          initialPhase={initialPhase}
+          onAnswer={onAnswer}
+          onFinish={onFinish}
+          titleAs="h1"
+          finishLabel="See results"
+          isFinishing={isFinishing}
+        />
+        {finishError ? (
+          <p role="alert" className="text-sm text-bad">
+            {finishError}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

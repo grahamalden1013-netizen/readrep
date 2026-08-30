@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import type { PublicRep, RepReveal } from "@/lib/reps/public-rep";
 
 function labelFor(rep: PublicRep, choiceId: string) {
@@ -8,11 +9,10 @@ function labelFor(rep: PublicRep, choiceId: string) {
 }
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
-  const color =
-    tone === "good" ? "text-signal-good" : tone === "bad" ? "text-signal-bad" : "text-ink-100";
+  const color = tone === "good" ? "text-good" : tone === "bad" ? "text-bad" : "text-fg";
   return (
-    <div className="flex flex-col gap-1 border-t border-ink-800 py-3 first:border-t-0 first:pt-0 sm:flex-row sm:gap-4">
-      <p className="label-caps w-40 shrink-0 pt-0.5 text-ink-500">{label}</p>
+    <div className="flex flex-col gap-1 border-t border-line py-3 first:border-t-0 first:pt-0">
+      <p className="label-caps text-fg-faint">{label}</p>
       <p className={`text-sm leading-relaxed ${color}`}>{value}</p>
     </div>
   );
@@ -35,18 +35,14 @@ export function RevealPanel({
 }) {
   return (
     <div
-      className="flex flex-col gap-4 rounded-panel border border-ink-700 bg-ink-900 p-5"
+      className="flex flex-col gap-4 rounded-panel border border-line bg-surface p-5"
       aria-live="polite"
     >
-      <div className="flex items-center gap-3">
-        <span
-          className={`label-caps rounded-sm px-2 py-1 ${
-            reveal.isCorrect ? "bg-signal-good text-ink-950" : "bg-signal-bad text-ink-950"
-          }`}
-        >
+      <div className="flex flex-wrap items-center gap-3">
+        <Chip tone={reveal.isCorrect ? "good" : "bad"}>
           {reveal.isCorrect ? "Correct read" : "Missed read"}
-        </span>
-        <p className="text-sm text-ink-400">{rep.title}</p>
+        </Chip>
+        <p className="text-sm text-fg-faint">{rep.title}</p>
       </div>
 
       <div>
@@ -62,13 +58,13 @@ export function RevealPanel({
         <Row label="Best read" value={labelFor(rep, reveal.correctChoiceId)} tone="good" />
       </div>
 
-      <p className="text-sm leading-relaxed text-ink-300">{reveal.explanation}</p>
+      <p className="text-sm leading-relaxed text-fg-soft">{reveal.explanation}</p>
 
-      <p className="border-l-2 border-lime-accent pl-3 text-sm font-medium text-ink-50">
+      <p className="decision-mark text-sm leading-relaxed font-medium text-fg">
         {reveal.coachingCue}
       </p>
 
-      <div>
+      <div className="pt-1">
         <Button onClick={onNext} disabled={isFinishing} size="lg">
           {isLastRep ? (isFinishing ? "Finishing…" : finishLabel) : "Next rep"}
         </Button>

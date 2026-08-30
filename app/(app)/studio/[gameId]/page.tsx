@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ButtonLink } from "@/components/ui/button";
-import { Panel, SectionLabel } from "@/components/ui/panel";
+import { Chip } from "@/components/ui/chip";
+import { EmptyState, SectionLabel } from "@/components/ui/panel";
+import { PageHeader } from "@/components/app/page-header";
 import { RepStudio } from "@/components/studio/rep-studio";
 import { PublishedRepActions } from "@/components/studio/published-rep-actions";
 import { SKILL_CATEGORY_LABELS } from "@/lib/reps/schema";
@@ -10,7 +12,7 @@ import { formatTimecode } from "@/lib/reps/timing";
 import { getGame, getRepsForGame } from "@/lib/store";
 import { getPlayableVideo, getVideoDurationMs } from "@/lib/video/playback";
 
-export const metadata: Metadata = { title: "Rep studio" };
+export const metadata: Metadata = { title: "Studio" };
 
 export default async function StudioGamePage({
   params,
@@ -25,52 +27,63 @@ export default async function StudioGamePage({
   const source = getPlayableVideo(game);
   if (!source) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-14 sm:px-6">
-        <SectionLabel>Not ready</SectionLabel>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-50">{game.title}</h1>
-        <p className="max-w-prose text-sm leading-relaxed text-ink-400">
+      <div className="page-shell-narrow flex flex-col gap-8 py-10">
+        <PageHeader
+          label="Studio"
+          title={game.title}
+          actions={
+            <>
+              <ButtonLink href={`/games/${game.id}/processing`}>
+                Check status
+              </ButtonLink>
+              <ButtonLink href="/games" variant="secondary">
+                Back to film
+              </ButtonLink>
+            </>
+          }
+        >
           This game has no playable video yet, so there is nothing to mark up.
-        </p>
-        <div className="flex gap-3">
-          <ButtonLink href={`/games/${game.id}/processing`}>Check status</ButtonLink>
-          <ButtonLink href="/studio" variant="secondary">
-            Back to studio
-          </ButtonLink>
-        </div>
+        </PageHeader>
       </div>
     );
   }
 
   const reps = await getRepsForGame(gameId, { includeDrafts: true });
   const editingId = typeof query.rep === "string" ? query.rep : null;
-  const publishedId = typeof query.published === "string" ? query.published : null;
-  const existingRep = editingId ? (reps.find((rep) => rep.id === editingId) ?? null) : null;
+  const publishedId =
+    typeof query.published === "string" ? query.published : null;
+  const existingRep = editingId
+    ? (reps.find((rep) => rep.id === editingId) ?? null)
+    : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <SectionLabel>Rep studio</SectionLabel>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink-50">{game.title}</h1>
-          <p className="text-sm text-ink-400">
-            {game.identity.teamColor} · #{game.identity.jerseyNumber}
+    <div className="page-shell flex flex-col gap-6 py-6">
+      <PageHeader
+        label="Studio"
+        title={game.title}
+        meta={
+          <>
+            {game.identity.teamColor} &middot; #{game.identity.jerseyNumber}
             {game.videoAsset?.durationSeconds
               ? ` · ${formatTimecode(game.videoAsset.durationSeconds * 1000)} of film`
               : ""}
-          </p>
-        </div>
-        <ButtonLink href="/studio" variant="ghost">
-          All games
-        </ButtonLink>
-      </header>
+            {` · ${reps.length} ${reps.length === 1 ? "rep" : "reps"} authored`}
+          </>
+        }
+        actions={
+          <ButtonLink href="/games" variant="secondary">
+            Back to film
+          </ButtonLink>
+        }
+      />
 
       {publishedId ? (
-        <Panel className="flex flex-wrap items-center justify-between gap-3 border-lime-accent/40 p-4">
-          <p className="text-sm text-ink-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-accent/50 bg-surface p-4">
+          <p className="decision-mark text-sm font-medium text-fg">
             Rep published. It is now playable as a session on this game.
           </p>
           <PublishedRepActions gameId={game.id} />
-        </Panel>
+        </div>
       ) : null}
 
       <RepStudio
@@ -80,47 +93,52 @@ export default async function StudioGamePage({
         durationMs={getVideoDurationMs(game)}
         existingRep={existingRep}
         repCount={reps.length}
-      />
-
-      <section className="flex flex-col gap-3">
-        <SectionLabel>Reps on this game</SectionLabel>
-        {reps.length === 0 ? (
-          <p className="text-sm text-ink-500">None yet. Author the first one above.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {reps.map((rep) => (
-              <Panel
-                as="li"
-                key={rep.id}
-                className="flex flex-wrap items-center justify-between gap-3 p-4"
-              >
-                <div>
-                  <p className="text-sm font-medium text-ink-100">
-                    {rep.title}{" "}
-                    <span
-                      className={`label-caps ml-2 ${
-                        rep.status === "published" ? "text-signal-good" : "text-ink-500"
-                      }`}
+        aside={
+          <section className="flex flex-col gap-3">
+            <SectionLabel>Reps on this game</SectionLabel>
+            {reps.length === 0 ? (
+              <EmptyState
+                title="No reps yet"
+                body="Scrub to the instant before a decision, set the freeze, and write the read. The first one you publish becomes a playable session."
+              />
+            ) : (
+              <ul className="overflow-hidden rounded-panel border border-line">
+                {reps.map((rep) => (
+                  <li
+                    key={rep.id}
+                    className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line bg-surface px-4 py-3.5 last:border-b-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2.5 text-sm font-semibold text-fg">
+                        {rep.title}
+                        <Chip
+                          tone={rep.status === "published" ? "good" : "quiet"}
+                        >
+                          {rep.status}
+                        </Chip>
+                      </p>
+                      <p className="timecode mt-1.5 text-fg-faint">
+                        {SKILL_CATEGORY_LABELS[rep.category]} ·{" "}
+                        {formatTimecode(rep.clipStartMs)} →{" "}
+                        <span className="text-accent">
+                          {formatTimecode(rep.decisionPauseMs)}
+                        </span>{" "}
+                        → {formatTimecode(rep.clipEndMs)}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/studio/${game.id}?rep=${rep.id}`}
+                      className="rounded-xs text-sm font-medium text-fg underline underline-offset-4"
                     >
-                      {rep.status}
-                    </span>
-                  </p>
-                  <p className="font-mono text-xs text-ink-500">
-                    {SKILL_CATEGORY_LABELS[rep.category]} · {formatTimecode(rep.clipStartMs)} →{" "}
-                    {formatTimecode(rep.decisionPauseMs)} → {formatTimecode(rep.clipEndMs)}
-                  </p>
-                </div>
-                <Link
-                  href={`/studio/${game.id}?rep=${rep.id}`}
-                  className="text-sm font-medium text-ink-300 underline underline-offset-4 hover:text-ink-50"
-                >
-                  Edit
-                </Link>
-              </Panel>
-            ))}
-          </ul>
-        )}
-      </section>
+                      Edit
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        }
+      />
     </div>
   );
 }

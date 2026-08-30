@@ -1,9 +1,11 @@
 export default function SessionLoading() {
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-10">
-      <div className="h-4 w-32 rounded bg-ink-850" />
-      <div className="aspect-video w-full rounded-panel border border-ink-800 bg-ink-900" />
-      <div className="h-6 w-2/3 rounded bg-ink-850" />
+    <div className="page-shell flex flex-col gap-5 py-6 sm:py-8">
+      <div className="h-4 w-32 rounded-xs bg-raised" />
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+        <div className="aspect-video w-full rounded-frame border border-line bg-surface" />
+        <div className="h-40 rounded-panel border border-line bg-surface" />
+      </div>
       <span className="sr-only">Loading session</span>
     </div>
   );

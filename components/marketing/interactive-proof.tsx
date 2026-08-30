@@ -33,6 +33,9 @@ function stageIndex(phase: RepPhase): number {
  * and the correct answer still only arrives in the response to a submitted
  * choice.
  *
+ * It is rendered inside the film shell, so the visitor is already standing in
+ * the product's own room before they ever click through to it.
+ *
  * The section heading doubles as the progress indicator: the four stages light
  * up as the loop runs, so the page states them once rather than twice.
  */
@@ -64,27 +67,27 @@ export function InteractiveProof({
   const active = stageIndex(phase);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex flex-col gap-7">
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div>
-          <h2 className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[1.375rem] font-semibold tracking-[-0.02em] text-graphite-950 uppercase sm:text-2xl">
+          <h2 className="display-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-fg">
             {STAGES.map((stage, index) => {
               const state = index < active ? "done" : index === active ? "active" : "pending";
               return (
-                <span key={stage} className="flex items-center gap-2.5">
+                <span key={stage} className="flex items-center gap-3">
                   <span
-                    className={`transition-[color] duration-300 ${
+                    className={`transition-[color] duration-300 ease-signal ${
                       state === "active"
-                        ? "text-court"
+                        ? "text-accent"
                         : state === "done"
-                          ? "text-graphite-950"
-                          : "text-graphite-500"
+                          ? "text-fg"
+                          : "text-fg-faint"
                     }`}
                   >
                     {stage}
                   </span>
                   {index < STAGES.length - 1 ? (
-                    <span aria-hidden="true" className="text-rule-strong">
+                    <span aria-hidden="true" className="text-line-strong">
                       &rarr;
                     </span>
                   ) : null}
@@ -92,31 +95,29 @@ export function InteractiveProof({
               );
             })}
           </h2>
-          <p className="mt-2.5 max-w-lg text-sm leading-relaxed text-graphite-700">
+          <p className="mt-3 max-w-lg text-sm leading-relaxed text-fg-soft">
             One real rep, start to finish. Make the call before the film shows you what happened.
           </p>
         </div>
 
-        <ButtonLink href={demoHref} variant="outline">
+        <ButtonLink href={demoHref} variant="secondary">
           Skip to the full session
         </ButtonLink>
       </div>
 
-      <div className="surface-dark accent-court rounded-[6px] border border-graphite-950/15 p-4 shadow-[0_18px_40px_-24px_rgba(22,19,15,0.45)] sm:p-5">
-        <RepPlayer
-          gameTitle={gameTitle}
-          source={source}
-          reps={[rep]}
-          initialReveals={{}}
-          initialIndex={0}
-          initialPhase="idle"
-          onAnswer={onAnswer}
-          onFinish={onFinish}
-          onPhaseChange={setPhase}
-          promptAs="h3"
-          finishLabel="Take the full session"
-        />
-      </div>
+      <RepPlayer
+        gameTitle={gameTitle}
+        source={source}
+        reps={[rep]}
+        initialReveals={{}}
+        initialIndex={0}
+        initialPhase="idle"
+        onAnswer={onAnswer}
+        onFinish={onFinish}
+        onPhaseChange={setPhase}
+        promptAs="h3"
+        finishLabel="Take the full session"
+      />
     </div>
   );
 }

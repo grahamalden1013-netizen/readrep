@@ -73,46 +73,46 @@ export function AnalysisProgress({
                 aria-hidden="true"
                 className={`h-1.5 w-1.5 rounded-full ${
                   state === "done"
-                    ? "bg-lime-accent"
+                    ? "bg-accent"
                     : state === "active"
-                      ? "animate-pulse bg-ink-100"
-                      : "bg-ink-700"
+                      ? "animate-pulse bg-fg"
+                      : "bg-raised"
                 }`}
               />
               <span
                 className={`text-sm ${
-                  state === "waiting" ? "text-ink-600" : state === "active" ? "text-ink-50" : "text-ink-400"
+                  state === "waiting" ? "text-fg-faint" : state === "active" ? "text-fg" : "text-fg-soft"
                 }`}
               >
                 {stage.label}
               </span>
               {state === "done" ? (
-                <span className="label-caps ml-auto text-ink-600">Done</span>
+                <span className="label-caps ml-auto text-fg-faint">Done</span>
               ) : null}
             </li>
           );
         })}
       </ol>
 
-      <div className="h-0.5 w-full overflow-hidden rounded-full bg-ink-800">
+      <div className="h-0.5 w-full overflow-hidden rounded-full bg-sunken">
         <div
-          className="h-full bg-lime-accent transition-[width] duration-500 ease-out"
+          className="h-full bg-accent transition-[width] duration-500 ease-out"
           style={{ width: `${Math.round((current / stages.length) * 100)}%` }}
         />
       </div>
 
-      <p className="max-w-prose text-sm leading-relaxed text-ink-500">{note}</p>
+      <p className="max-w-prose text-sm leading-relaxed text-fg-faint">{note}</p>
 
       {error ? (
         <div role="alert" className="flex flex-col items-start gap-3">
-          <p className="text-sm text-signal-bad">{error}</p>
+          <p className="text-sm text-bad">{error}</p>
           <Button variant="secondary" onClick={() => router.push("/dashboard")}>
             Back to dashboard
           </Button>
         </div>
       ) : null}
 
-      {done && !error ? <p className="text-sm text-ink-400">Opening your session…</p> : null}
+      {done && !error ? <p className="text-sm text-fg-soft">Opening your session…</p> : null}
     </div>
   );
 }

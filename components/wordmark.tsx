@@ -1,26 +1,19 @@
 import Link from "next/link";
 
 /**
- * The app is dark and the public homepage is light, so the wordmark carries the
- * accent that belongs to the surface it sits on.
+ * The mark is the freeze: a short amber rule standing in front of the name,
+ * the same rule that marks the decision point everywhere else in the product.
+ * It carries no colour of its own, so it reads correctly on every shell.
  */
-export function Wordmark({
-  href = "/",
-  tone = "dark",
-}: {
-  href?: string;
-  tone?: "dark" | "light";
-}) {
-  const isLight = tone === "light";
-
+export function Wordmark({ href = "/" }: { href?: string }) {
   return (
     <Link
       href={href}
-      className={`text-[0.9375rem] font-semibold tracking-[-0.02em] ${
-        isLight ? "text-graphite-950" : "text-ink-50"
-      }`}
+      className="inline-flex items-center gap-2 rounded-xs text-fg"
+      aria-label="NextRep home"
     >
-      Next<span className={isLight ? "text-court" : "text-lime-accent"}>Rep</span>
+      <span aria-hidden="true" className="h-4 w-[3px] shrink-0 bg-accent" />
+      <span className="display-3">NextRep</span>
     </Link>
   );
 }

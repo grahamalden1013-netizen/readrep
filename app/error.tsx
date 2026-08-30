@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/app/page-header";
+import { Wordmark } from "@/components/wordmark";
 
 export default function GlobalError({
   error,
@@ -15,12 +17,21 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-start justify-center gap-4 px-6 py-20">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink-50">Something broke</h1>
-      <p className="max-w-prose text-sm leading-relaxed text-ink-400">
-        That page failed to load. Trying again usually fixes it.
-      </p>
-      <Button onClick={reset}>Try again</Button>
+    <div className="is-document shell-app flex flex-1 flex-col">
+      <header className="border-b border-line">
+        <div className="page-shell flex h-14 items-center">
+          <Wordmark href="/dashboard" />
+        </div>
+      </header>
+      <div className="page-shell-narrow flex flex-1 flex-col justify-center gap-6 py-20">
+        <PageHeader
+          label="Error"
+          title="Something broke"
+          actions={<Button onClick={reset}>Try again</Button>}
+        >
+          That page failed to load. Trying again usually fixes it.
+        </PageHeader>
+      </div>
     </div>
   );
 }

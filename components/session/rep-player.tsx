@@ -6,6 +6,8 @@ import {
   VideoSurface,
   type VideoSurfaceHandle,
 } from "@/components/video/video-surface";
+import { Chip } from "@/components/ui/chip";
+import { FreezeMarks } from "@/components/video/freeze-marks";
 import { RevealPanel } from "./reveal-panel";
 import { SKILL_CATEGORY_LABELS, type VideoSource } from "@/lib/reps/schema";
 import type { PublicRep, RepReveal } from "@/lib/reps/public-rep";
@@ -38,7 +40,8 @@ export function RepPlayer({
   finishLabel,
   isFinishing = false,
   onPhaseChange,
-  promptAs: Prompt = "h1",
+  titleAs: Title = "p",
+  promptAs: Prompt = "h2",
 }: {
   gameTitle: string;
   source: VideoSource;
@@ -52,8 +55,13 @@ export function RepPlayer({
   isFinishing?: boolean;
   /** Lets a host surface label the stage without owning any of the loop. */
   onPhaseChange?: (phase: RepPhase) => void;
-  /** The prompt is the page heading in a session, but not when embedded. */
-  promptAs?: "h1" | "h2" | "h3";
+  /**
+   * The game title is the page heading in a session and a plain line when the
+   * loop is embedded in a page that already owns its <h1>.
+   */
+  titleAs?: "h1" | "p";
+  /** The prompt sits one level under whatever the host used for the title. */
+  promptAs?: "h2" | "h3";
 }) {
   const videoRef = useRef<VideoSurfaceHandle>(null);
 
@@ -166,31 +174,35 @@ export function RepPlayer({
 
   return (
     <div className="flex w-full flex-col gap-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <p className="label-caps text-ink-100">
-            Rep {index + 1} of {reps.length}
-          </p>
-          <div className="flex gap-1.5" aria-hidden="true">
-            {reps.map((item, itemIndex) => (
-              <span
-                key={item.id}
-                className={`h-1 w-6 rounded-full ${
-                  itemIndex < index || reveals[item.id]
-                    ? "bg-lime-accent"
-                    : itemIndex === index
-                      ? "bg-ink-300"
-                      : "bg-ink-700"
-                }`}
-              />
-            ))}
+      <header className="flex flex-col gap-2.5">
+        <Title className="display-3 text-fg">{gameTitle}</Title>
+        {/* A single-rep run (the homepage proof, the studio preview) has no
+            progress to report, so it does not pretend to. */}
+        {reps.length > 1 ? (
+          <div className="flex items-center gap-3">
+            <p className="label-caps text-fg-faint">
+              Rep {index + 1} of {reps.length}
+            </p>
+            <div className="flex gap-1.5" aria-hidden="true">
+              {reps.map((item, itemIndex) => (
+                <span
+                  key={item.id}
+                  className={`h-1 w-6 rounded-full ${
+                    itemIndex < index || reveals[item.id]
+                      ? "bg-accent"
+                      : itemIndex === index
+                        ? "bg-fg-faint"
+                        : "bg-line-strong"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-        <p className="text-sm text-ink-500">{gameTitle}</p>
+        ) : null}
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-3 lg:items-start">
-        <div className="overflow-hidden rounded-panel border border-ink-700 bg-ink-900 lg:col-span-2">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)] lg:items-stretch">
+        <div className="overflow-hidden rounded-frame border border-line bg-surface">
           <div className="relative">
             <VideoSurface
               ref={videoRef}
@@ -201,8 +213,10 @@ export function RepPlayer({
               captionsOn={captionsOn}
             />
 
+            <FreezeMarks active={phase === "deciding"} />
+
             {phase === "idle" && !videoFailed ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-ink-950/70 px-6 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-canvas/70 px-6 text-center">
                 <Button size="lg" onClick={() => void startRep(index)}>
                   Start rep {index + 1}
                 </Button>
@@ -210,11 +224,11 @@ export function RepPlayer({
             ) : null}
 
             {videoFailed ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink-950/90 px-6 text-center">
-                <p className="text-sm font-medium text-ink-100">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-canvas/90 px-6 text-center">
+                <p className="display-3 text-fg">
                   The film could not be loaded.
                 </p>
-                <p className="max-w-sm text-sm text-ink-400">
+                <p className="max-w-sm text-sm text-fg-soft">
                   Check your connection and try again — your answers so far are
                   saved.
                 </p>
@@ -231,14 +245,26 @@ export function RepPlayer({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-700 px-4 py-3">
-            <span className="label-caps rounded-sm bg-lime-accent px-2 py-1 text-ink-950">
-              {SKILL_CATEGORY_LABELS[rep.category]}
-            </span>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <Chip tone="accent">{SKILL_CATEGORY_LABELS[rep.category]}</Chip>
+              <span className="label-caps whitespace-nowrap text-fg-faint">
+                {phase === "deciding"
+                  ? "Paused"
+                  : phase === "resuming"
+                    ? "Outcome"
+                    : phase === "watching"
+                      ? "Playing"
+                      : phase === "reveal"
+                        ? "Clip ended"
+                        : "Ready"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
               {phase === "deciding" ? (
                 <Button
                   variant="ghost"
+                  size="sm"
                   onClick={() =>
                     void videoRef.current
                       ?.playFrom(rep.clipStartMs)
@@ -251,6 +277,7 @@ export function RepPlayer({
               {source.captionsSrc ? (
                 <Button
                   variant="ghost"
+                  size="sm"
                   aria-pressed={captionsOn}
                   onClick={() => setCaptionsOn((on) => !on)}
                 >
@@ -261,23 +288,23 @@ export function RepPlayer({
           </div>
 
           {source.disclaimer ? (
-            <p className="border-t border-ink-800 px-4 py-2 text-xs text-ink-600">
+            <p className="border-t border-line px-4 py-2.5 text-xs text-fg-faint">
               {source.disclaimer}
             </p>
           ) : null}
         </div>
 
         {/* Reserved height keeps the layout from jumping as the panel swaps. */}
-        <div className="lg:min-h-[20rem]">
+        <div className="flex flex-col justify-center lg:min-h-[22rem]">
           {phase === "watching" || phase === "idle" ? (
-            <p className="text-sm leading-relaxed text-ink-400">
+            <p className="text-sm leading-relaxed text-fg-soft">
               {rep.situation}
             </p>
           ) : null}
 
           {phase === "deciding" ? (
             <div className="flex flex-col gap-4">
-              <Prompt className="text-lg leading-snug font-medium text-ink-50 sm:text-xl">
+              <Prompt className="decision-mark text-lg leading-snug font-semibold text-fg sm:text-xl">
                 {rep.prompt}
               </Prompt>
               <ul className="flex flex-col gap-2">
@@ -287,9 +314,9 @@ export function RepPlayer({
                       type="button"
                       disabled={pending !== null}
                       onClick={() => void choose(choice.id)}
-                      className="flex w-full items-center gap-3 rounded-panel border border-ink-600 px-4 py-3 text-left text-sm text-ink-100 transition-colors hover:border-lime-accent hover:bg-ink-850 disabled:opacity-50"
+                      className="flex w-full items-start gap-3 rounded-control border border-line-strong bg-surface px-4 py-3 text-left text-sm text-fg transition-[border-color,background-color] duration-150 ease-signal hover:border-accent hover:bg-raised disabled:opacity-50"
                     >
-                      <span className="font-mono text-xs text-ink-500">
+                      <span className="timecode mt-0.5 text-fg-faint">
                         {String.fromCharCode(65 + choiceIndex)}
                       </span>
                       {choice.label}
@@ -297,16 +324,16 @@ export function RepPlayer({
                   </li>
                 ))}
               </ul>
-              <p className="hidden text-xs text-ink-600 sm:block">
-                Press {CHOICE_KEYS.slice(0, rep.choices.length).join("–")} to
-                choose.
+              <p className="hidden text-xs text-fg-faint sm:block">
+                Press {CHOICE_KEYS.slice(0, rep.choices.length).join("\u2013")}{" "}
+                to choose.
               </p>
             </div>
           ) : null}
 
           {phase === "resuming" ? (
-            <p className="text-sm text-ink-400">
-              Watching what actually happened…
+            <p className="text-sm text-fg-soft">
+              Watching what actually happened&hellip;
             </p>
           ) : null}
 
@@ -322,7 +349,7 @@ export function RepPlayer({
           ) : null}
 
           {error ? (
-            <p role="alert" className="mt-4 text-sm text-signal-bad">
+            <p role="alert" className="mt-4 text-sm text-bad">
               {error}
             </p>
           ) : null}

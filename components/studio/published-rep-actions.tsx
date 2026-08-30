@@ -25,7 +25,7 @@ export function PublishedRepActions({ gameId }: { gameId: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {error ? <span className="text-sm text-signal-bad">{error}</span> : null}
+      {error ? <span className="text-sm text-bad">{error}</span> : null}
       <Button onClick={() => void play()} disabled={starting}>
         {starting ? "Starting…" : "Take this session"}
       </Button>

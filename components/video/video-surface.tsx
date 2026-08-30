@@ -221,7 +221,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
   }));
 
   return (
-    <div className={`relative aspect-video w-full overflow-hidden bg-ink-950 ${className}`}>
+    <div className={`relative aspect-video w-full overflow-hidden bg-[#08090c] ${className}`}>
       <video
         ref={videoRef}
         poster={source.posterSrc}
@@ -256,7 +256,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
       </video>
 
       {isBuffering ? (
-        <p className="label-caps absolute bottom-3 left-3 rounded-sm bg-ink-950/85 px-2 py-1 text-ink-300">
+        <p className="label-caps absolute bottom-3 left-3 rounded-sm bg-canvas/85 px-2 py-1 text-fg-soft">
           Buffering
         </p>
       ) : null}

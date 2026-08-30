@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { UploadFlow } from "@/components/upload/upload-flow";
-import { SectionLabel } from "@/components/ui/panel";
+import { PageHeader } from "@/components/app/page-header";
 import { getBackendAvailability } from "@/lib/db";
 import { DEMO_GAME_ID } from "@/lib/reps/seed";
 import { getVideoConfig } from "@/lib/video";
@@ -8,7 +8,7 @@ import { getVideoConfig } from "@/lib/video";
 // Reads per-request state (signed-in user, stored games), so never prerendered.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "New game" };
+export const metadata: Metadata = { title: "Upload film" };
 
 export default async function NewGamePage() {
   const [availability, videoConfig] = await Promise.all([
@@ -28,11 +28,12 @@ export default async function NewGamePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-10 sm:px-6">
-      <header className="flex flex-col gap-2">
-        <SectionLabel>New game</SectionLabel>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-50">Add a game</h1>
-      </header>
+    <div className="page-shell-narrow flex flex-col gap-8 py-8">
+      <PageHeader label="Film" title="Upload a game">
+        The whole game, not a clip. You mark the decisions afterwards in Studio, and the film stays
+        where it is — nothing is re-encoded on your machine.
+      </PageHeader>
+
       <UploadFlow
         demoGameId={DEMO_GAME_ID}
         uploadsEnabled={disabledReason === null}

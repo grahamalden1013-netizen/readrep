@@ -6,8 +6,7 @@ import { InteractiveProof } from "@/components/marketing/interactive-proof";
 import { toPublicRep } from "@/lib/reps/public-rep";
 import { DEMO_GAME, DEMO_GAME_ID, DEMO_REPS } from "@/lib/reps/seed";
 
-// The public page is the one light surface in the product.
-export const viewport: Viewport = { themeColor: "#f5f2ec" };
+export const viewport: Viewport = { themeColor: "#ffffff" };
 
 const DEMO_HREF = `/games/${DEMO_GAME_ID}/processing`;
 
@@ -15,17 +14,36 @@ const STEPS = [
   {
     n: "01",
     title: "Upload your game",
-    body: "NextRep finds decisions involving you.",
+    body: "Say which player you are. The decisions you were part of get marked on the film.",
   },
   {
     n: "02",
     title: "Make the read again",
-    body: "The film pauses before the outcome.",
+    body: "The film pauses before the outcome. You commit to a choice before you are shown one.",
   },
   {
     n: "03",
     title: "Learn from the result",
-    body: "See what happened and understand the better option.",
+    body: "See what actually happened, why the better option was better, and what to look for next.",
+  },
+];
+
+const CONTRAST = [
+  {
+    label: "Watching film",
+    lines: [
+      "The play runs to its end.",
+      "You already know the outcome.",
+      "Agreeing with the tape feels like learning.",
+    ],
+  },
+  {
+    label: "Taking a rep",
+    lines: [
+      "The film stops one beat early.",
+      "You have to commit to a read.",
+      "Then the tape tells you if you were right.",
+    ],
   },
 ];
 
@@ -45,43 +63,41 @@ export default function LandingPage() {
   const heroSource = { ...source, posterSrc: undefined };
 
   return (
-    <div className="surface-light flex flex-1 flex-col">
+    <div className="is-document shell-marketing flex flex-1 flex-col">
       <SiteNav demoHref={DEMO_HREF} />
 
       <main className="flex-1">
         {/* ---------------------------------------------------------------- */}
-        {/* Hero: copy left, the real product frame right.                    */}
+        {/* Hero: the claim on the left, the running product on the right.    */}
         {/* ---------------------------------------------------------------- */}
-        <section className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 lg:py-10">
-          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
+        <section className="page-shell py-8 lg:py-10">
+          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-12">
             <div>
-              <p className="label-caps text-court-deep">
-                Basketball IQ training
-              </p>
+              <p className="label-caps text-fg-faint">Basketball IQ training</p>
 
-              <h1 className="mt-4 text-[2.25rem] leading-[0.95] font-semibold tracking-[-0.035em] text-graphite-950 uppercase sm:text-[3.25rem] lg:text-[3.75rem]">
+              <h1 className="display-1 mt-5 text-fg">
                 See the read.
                 <br />
                 Make it again.
               </h1>
 
-              <p className="mt-5 max-w-md text-base leading-relaxed text-graphite-700">
+              <p className="mt-6 max-w-md text-base leading-relaxed text-fg-soft">
                 NextRep turns decisions from your actual game film into short,
-                interactive reps—so you can recognize the better play before
-                your next game.
+                interactive reps&mdash;so you can recognize the better play
+                before your next game.
               </p>
 
-              <div className="mt-7 flex flex-col gap-2.5 sm:flex-row">
-                <ButtonLink href="#for-players" variant="court" size="lg">
+              <div className="mt-8 flex flex-col gap-2.5 sm:flex-row">
+                <ButtonLink href="#for-players" size="lg">
                   Try a real rep
                 </ButtonLink>
-                <ButtonLink href="/games/new" variant="outline" size="lg">
+                <ButtonLink href="/games/new" variant="secondary" size="lg">
                   Upload game film
                 </ButtonLink>
               </div>
 
-              <p className="mt-4 text-[0.8125rem] text-graphite-500">
-                Five decisions. About four minutes.
+              <p className="mt-5 text-[0.8125rem] text-fg-faint">
+                Five decisions. About four minutes. No account needed.
               </p>
             </div>
 
@@ -95,25 +111,53 @@ export default function LandingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* One tight explanation row.                                        */}
+        {/* What a rep is, against what film review already is.               */}
+        {/* ---------------------------------------------------------------- */}
+        <section className="border-t border-line bg-surface">
+          <div className="page-shell grid gap-8 py-12 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:gap-14">
+            <h2 className="display-2 max-w-sm text-fg">
+              Film review is passive. A rep is not.
+            </h2>
+
+            <div className="grid gap-px overflow-hidden rounded-panel border border-line bg-line sm:grid-cols-2">
+              {CONTRAST.map((column, index) => (
+                <div key={column.label} className="bg-canvas p-5">
+                  <p
+                    className={`label-caps ${index === 1 ? "text-fg" : "text-fg-faint"}`}
+                  >
+                    {column.label}
+                  </p>
+                  <ul
+                    className={`mt-4 flex flex-col gap-2.5 text-sm leading-relaxed ${
+                      index === 1 ? "decision-mark text-fg" : "text-fg-soft"
+                    }`}
+                  >
+                    {column.lines.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* How it works.                                                     */}
         {/* ---------------------------------------------------------------- */}
         <section
           id="how-it-works"
-          className="border-t border-rule scroll-mt-14"
+          className="scroll-mt-14 border-t border-line"
         >
-          <div className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8">
-            <h2 className="text-[1.375rem] font-semibold tracking-[-0.02em] text-graphite-950 uppercase sm:text-2xl">
-              Your game becomes the workout
-            </h2>
+          <div className="page-shell py-12">
+            <h2 className="display-2 text-fg">Your game becomes the workout</h2>
 
-            <ol className="mt-7 grid gap-px overflow-hidden rounded-[4px] border border-rule bg-rule sm:grid-cols-3">
+            <ol className="mt-8 grid gap-px overflow-hidden rounded-panel border border-line bg-line sm:grid-cols-3">
               {STEPS.map((step) => (
-                <li key={step.n} className="bg-paper-card p-5">
-                  <p className="font-mono text-xs text-court-deep">{step.n}</p>
-                  <h3 className="mt-3 text-[0.9375rem] font-semibold tracking-[-0.01em] text-graphite-950">
-                    {step.title}
-                  </h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-graphite-700">
+                <li key={step.n} className="bg-surface p-5">
+                  <p className="timecode text-fg-faint">{step.n}</p>
+                  <h3 className="display-3 mt-4 text-fg">{step.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-fg-soft">
                     {step.body}
                   </p>
                 </li>
@@ -123,10 +167,10 @@ export default function LandingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Interactive proof: the real loop, playable here.                  */}
+        {/* The product itself, in the product's own room.                    */}
         {/* ---------------------------------------------------------------- */}
-        <section id="for-players" className="border-t border-rule scroll-mt-14">
-          <div className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8">
+        <section id="for-players" className="shell-film scroll-mt-14 bg-canvas">
+          <div className="page-shell py-12 lg:py-16">
             <InteractiveProof
               rep={toPublicRep(proofRep)}
               source={source}
@@ -139,20 +183,20 @@ export default function LandingPage() {
         {/* ---------------------------------------------------------------- */}
         {/* Close.                                                            */}
         {/* ---------------------------------------------------------------- */}
-        <section className="border-t border-rule">
-          <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-6 px-5 py-14 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-            <h2 className="max-w-lg text-[1.5rem] leading-tight font-semibold tracking-[-0.025em] text-graphite-950 uppercase sm:text-[1.75rem]">
+        <section className="border-t border-line">
+          <div className="page-shell flex flex-col items-start gap-6 py-14 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="display-2 max-w-lg text-fg">
               Your mistakes become your next reps.
             </h2>
-            <ButtonLink href={DEMO_HREF} variant="court" size="lg">
+            <ButtonLink href={DEMO_HREF} size="lg">
               Try a demo session
             </ButtonLink>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-rule">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-6 text-[0.8125rem] text-graphite-500 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <footer className="border-t border-line">
+        <div className="page-shell flex flex-col gap-2 py-6 text-[0.8125rem] text-fg-faint sm:flex-row sm:items-center sm:justify-between">
           <p>NextRep</p>
           <p>Demo film is an animated re-creation, not real game footage.</p>
         </div>

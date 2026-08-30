@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 import { AnalysisProgress, type Stage } from "@/components/processing/analysis-progress";
 import { VideoStatus } from "@/components/processing/video-status";
 import { ButtonLink } from "@/components/ui/button";
-import { Panel, SectionLabel } from "@/components/ui/panel";
+import { EmptyState } from "@/components/ui/panel";
+import { PageHeader } from "@/components/app/page-header";
 import { DEMO_GAME_ID } from "@/lib/reps/seed";
 import { getGame, getRepsForGame } from "@/lib/store";
 
-export const metadata: Metadata = { title: "Analyzing" };
+export const metadata: Metadata = { title: "Preparing film" };
 
 function stagesFor(jerseyNumber: string): Stage[] {
   return [
@@ -28,15 +29,17 @@ export default async function ProcessingPage({ params }: PageProps<"/games/[game
   const isSeededDemo = game.id === DEMO_GAME_ID;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-14 sm:px-6">
-      <header className="flex flex-col gap-2">
-        <SectionLabel>{isSeededDemo ? "Analyzing game" : "Uploading game"}</SectionLabel>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-50">{game.title}</h1>
-        <p className="text-sm text-ink-400">
-          {game.identity.teamColor} · #{game.identity.jerseyNumber}
-          {game.identity.marker ? ` · ${game.identity.marker}` : ""}
-        </p>
-      </header>
+    <div className="page-shell-narrow flex flex-col gap-8 py-10">
+      <PageHeader
+        label={isSeededDemo ? "Preparing your session" : "Preparing film"}
+        title={game.title}
+        meta={
+          <>
+            {game.identity.teamColor} &middot; #{game.identity.jerseyNumber}
+            {game.identity.marker ? ` · ${game.identity.marker}` : ""}
+          </>
+        }
+      />
 
       {isSeededDemo ? (
         <AnalysisProgress
@@ -57,18 +60,18 @@ export default async function ProcessingPage({ params }: PageProps<"/games/[game
           }}
         />
       ) : (
-        <Panel className="flex flex-col items-start gap-4 p-6">
-          <SectionLabel>No video</SectionLabel>
-          <p className="max-w-prose text-sm leading-relaxed text-ink-300">
-            {game.title} was created without a video. Upload the film again to continue.
-          </p>
-          <div className="flex flex-wrap gap-3 pt-1">
-            <ButtonLink href="/games/new">Upload a game</ButtonLink>
-            <ButtonLink href="/dashboard" variant="secondary">
-              Back to dashboard
-            </ButtonLink>
-          </div>
-        </Panel>
+        <EmptyState
+          title="No video on this game"
+          body={`${game.title} was created without a video. Upload the film again to continue.`}
+          action={
+            <div className="flex flex-wrap gap-2.5">
+              <ButtonLink href="/games/new">Upload film</ButtonLink>
+              <ButtonLink href="/games" variant="secondary">
+                Back to film
+              </ButtonLink>
+            </div>
+          }
+        />
       )}
     </div>
   );

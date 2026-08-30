@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState, Panel, SectionLabel } from "@/components/ui/panel";
+import { GameList, GameRow, gameStatus } from "@/components/app/game-row";
 import { SkillBars } from "@/components/session/skill-bars";
 import { SKILL_CATEGORY_LABELS } from "@/lib/reps/schema";
 import { aggregateSkills, scoreSession } from "@/lib/reps/scoring";
@@ -10,6 +12,7 @@ import { getGame, getRepsByIds, listGames, listSessions } from "@/lib/store";
 export const metadata: Metadata = { title: "Dashboard" };
 
 const MINUTES_PER_REP = 0.8;
+const RECENT_GAMES = 3;
 
 export default async function DashboardPage() {
   const [games, sessions] = await Promise.all([listGames(), listSessions()]);
@@ -39,48 +42,50 @@ export default async function DashboardPage() {
     completed.map(({ reps, session }) => ({ reps, session })),
   );
 
-  return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-10 px-4 py-10 sm:px-6">
-      <Panel className="flex flex-col gap-5 p-6 sm:p-8">
-        <SectionLabel>Your next session</SectionLabel>
-        <div className="flex flex-col gap-2">
-          <p className="text-2xl font-semibold tracking-tight text-ink-50 sm:text-3xl">
-            {nextRepCount} {nextRepCount === 1 ? "rep" : "reps"} from{" "}
-            {nextGame?.title ?? "your next game"}
-          </p>
-          <p className="text-sm text-ink-400">
-            Estimated time: {Math.max(1, Math.round(nextRepCount * MINUTES_PER_REP))} minutes
-          </p>
-        </div>
-        <div>
-          {inProgress ? (
-            <ButtonLink href={`/sessions/${inProgress.session.id}`} size="lg">
-              Resume reps
-            </ButtonLink>
-          ) : (
-            <ButtonLink href={`/games/${DEMO_GAME_ID}/processing`} size="lg">
-              Start reps
-            </ButtonLink>
-          )}
-        </div>
-      </Panel>
+  const recent = games.slice(0, RECENT_GAMES);
 
-      <div className="grid gap-8 sm:grid-cols-2">
+  return (
+    <div className="page-shell flex flex-col gap-10 py-8">
+      {/* The one thing this page exists to do. */}
+      <section className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5 border-b border-line pb-7">
+        <div className="min-w-0">
+          <p className="label-caps text-fg-faint">Your next session</p>
+          <h1 className="display-1 mt-4 text-fg">
+            {nextRepCount} {nextRepCount === 1 ? "rep" : "reps"}
+          </h1>
+          <p className="mt-3 text-sm text-fg-soft">
+            {nextGame?.title ?? "Your next game"} &middot; about{" "}
+            {Math.max(1, Math.round(nextRepCount * MINUTES_PER_REP))} minutes
+          </p>
+        </div>
+
+        {inProgress ? (
+          <ButtonLink href={`/sessions/${inProgress.session.id}`} size="lg">
+            Resume reps
+          </ButtonLink>
+        ) : (
+          <ButtonLink href={`/games/${DEMO_GAME_ID}/processing`} size="lg">
+            Start reps
+          </ButtonLink>
+        )}
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <section className="flex flex-col gap-3">
           <SectionLabel>Last session</SectionLabel>
           {lastScore && lastCompleted ? (
-            <Panel className="flex flex-col gap-2 p-5">
-              <p className="text-3xl font-semibold tracking-tight text-ink-50 tabular-nums">
-                {lastScore.correct} <span className="text-ink-600">/</span> {lastScore.total}
+            <Panel className="flex flex-1 flex-col items-start gap-3 p-5">
+              <p className="display-1 text-fg tabular-nums">
+                {lastScore.correct}
+                <span className="text-fg-faint">/{lastScore.total}</span>
               </p>
-              <p className="text-sm text-ink-400">{lastCompleted.game?.title ?? "Session"}</p>
-              <ButtonLink
+              <p className="text-sm text-fg-soft">{lastCompleted.game?.title ?? "Session"}</p>
+              <Link
                 href={`/sessions/${lastCompleted.session.id}/complete`}
-                variant="ghost"
-                className="self-start px-0"
+                className="mt-auto rounded-xs text-sm font-medium text-fg underline underline-offset-4"
               >
                 See the breakdown
-              </ButtonLink>
+              </Link>
             </Panel>
           ) : (
             <EmptyState
@@ -93,12 +98,12 @@ export default async function DashboardPage() {
         <section className="flex flex-col gap-3">
           <SectionLabel>Next game focus</SectionLabel>
           {lastScore?.nextFocus ? (
-            <Panel className="p-5">
-              <p className="border-l-2 border-lime-accent pl-3 text-sm leading-relaxed font-medium text-ink-50">
+            <Panel className="flex flex-1 flex-col gap-4 p-5">
+              <p className="decision-mark text-[0.9375rem] leading-relaxed font-medium text-fg">
                 {lastScore.nextFocus}
               </p>
               {lastScore.needsWork ? (
-                <p className="mt-3 text-sm text-ink-500">
+                <p className="text-sm text-fg-faint">
                   Weakest category: {SKILL_CATEGORY_LABELS[lastScore.needsWork]}
                 </p>
               ) : null}
@@ -112,42 +117,40 @@ export default async function DashboardPage() {
         </section>
       </div>
 
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-4">
         <SectionLabel>Read accuracy by category</SectionLabel>
         <SkillBars skills={profileSkills} />
         {profileSkills.length > 0 ? (
-          <p className="text-xs text-ink-600">
+          <p className="text-xs text-fg-faint">
             Correct reads across every completed session. Not a rating.
           </p>
         ) : null}
       </section>
 
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <SectionLabel>Recent games</SectionLabel>
-          <ButtonLink href="/games/new" variant="ghost" className="px-0">
-            Add a game
-          </ButtonLink>
+        <div className="flex items-center justify-between gap-4">
+          <SectionLabel>Recent film</SectionLabel>
+          <Link
+            href="/games"
+            className="rounded-xs text-[0.8125rem] font-medium text-fg underline underline-offset-4"
+          >
+            All film
+          </Link>
         </div>
-        <ul className="flex flex-col gap-2">
-          {games.map((game) => (
-            <Panel
-              as="li"
+        <GameList>
+          {recent.map((game) => (
+            <GameRow
               key={game.id}
-              className="flex flex-wrap items-center justify-between gap-3 p-4"
-            >
-              <div>
-                <p className="text-sm font-medium text-ink-100">{game.title}</p>
-                <p className="text-sm text-ink-500">
-                  {game.playedOn} · {game.identity.teamColor} #{game.identity.jerseyNumber}
-                </p>
-              </div>
-              <ButtonLink href={`/games/${game.id}/processing`} variant="secondary">
-                {game.origin === "demo" ? "Take reps" : "Check status"}
-              </ButtonLink>
-            </Panel>
+              game={game}
+              status={gameStatus(game)}
+              actions={
+                <ButtonLink href={`/games/${game.id}/processing`} variant="secondary" size="sm">
+                  {game.origin === "demo" ? "Take reps" : "Check status"}
+                </ButtonLink>
+              }
+            />
           ))}
-        </ul>
+        </GameList>
       </section>
     </div>
   );

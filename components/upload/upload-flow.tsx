@@ -4,6 +4,7 @@ import { useCallback, useId, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/panel";
+import { Field, inputClass } from "@/components/ui/field";
 import {
   cancelGameUpload,
   markUploadFinished,
@@ -22,19 +23,6 @@ function formatBytes(bytes: number) {
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
   return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
 }
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="label-caps text-ink-400">{label}</span>
-      {children}
-      {hint ? <span className="text-xs text-ink-600">{hint}</span> : null}
-    </label>
-  );
-}
-
-const inputClass =
-  "h-10 rounded-panel border border-ink-600 bg-ink-950 px-3 text-sm text-ink-50 placeholder:text-ink-600 focus:border-ink-400";
 
 /**
  * Puts the file on the video host directly from the browser.
@@ -186,8 +174,8 @@ export function UploadFlow({
       <ol className="flex gap-2" aria-label="Upload steps">
         {[1, 2, 3].map((n) => (
           <li key={n} className="flex flex-1 flex-col gap-2">
-            <span className={`h-0.5 rounded-full ${n <= step ? "bg-lime-accent" : "bg-ink-800"}`} />
-            <span className={`label-caps ${n <= step ? "text-ink-200" : "text-ink-600"}`}>
+            <span className={`h-0.5 rounded-full ${n <= step ? "bg-accent" : "bg-sunken"}`} />
+            <span className={`label-caps ${n <= step ? "text-fg" : "text-fg-faint"}`}>
               {n === 1 ? "Upload game" : n === 2 ? "Identify player" : "Confirm"}
             </span>
           </li>
@@ -195,15 +183,16 @@ export function UploadFlow({
       </ol>
 
       {!uploadsEnabled ? (
-        <p
+        <div
           role="alert"
-          className="rounded-panel border border-ink-700 bg-ink-900 px-4 py-3 text-sm leading-relaxed text-ink-300"
+          className="flex flex-col gap-1.5 rounded-panel border border-line bg-surface px-4 py-3.5"
         >
-          {uploadsDisabledReason}
-        </p>
+          <p className="label-caps text-fg-faint">Uploads unavailable</p>
+          <p className="text-sm leading-relaxed text-fg-soft">{uploadsDisabledReason}</p>
+        </div>
       ) : fixtureMode ? (
-        <p className="rounded-panel border border-ink-700 bg-ink-900 px-4 py-3 text-sm leading-relaxed text-ink-300">
-          <span className="label-caps mr-2 rounded-sm bg-ink-700 px-2 py-1 text-ink-100">
+        <p className="rounded-panel border border-line bg-surface px-4 py-3 text-sm leading-relaxed text-fg-soft">
+          <span className="label-caps mr-2 inline-flex rounded-xs bg-raised px-2 py-1 text-fg">
             Fixture mode
           </span>
           Mux is not configured. Your file is streamed and measured so progress is real, then
@@ -221,12 +210,12 @@ export function UploadFlow({
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={onDrop}
-            className={`flex flex-col items-center gap-3 rounded-panel border border-dashed px-6 py-14 text-center transition-colors ${
-              isDragging ? "border-lime-accent bg-ink-900" : "border-ink-700"
+            className={`flex flex-col items-center gap-3 rounded-panel border border-dashed px-6 py-12 text-center transition-[border-color,background-color] duration-150 ease-signal ${
+              isDragging ? "border-accent bg-raised" : "border-line-strong bg-surface"
             }`}
           >
-            <p className="text-sm font-medium text-ink-100">Drop your game file here</p>
-            <p className="text-sm text-ink-500">{ACCEPTED.join(", ")} · up to 6 GB</p>
+            <p className="display-3 text-fg">Drop your game file here</p>
+            <p className="text-sm text-fg-faint">{ACCEPTED.join(", ")} · up to 6 GB</p>
             <input
               ref={fileInputRef}
               id={fileInputId}
@@ -245,15 +234,15 @@ export function UploadFlow({
           </div>
 
           {fileError ? (
-            <p role="alert" className="text-sm text-signal-bad">
+            <p role="alert" className="text-sm text-bad">
               {fileError}
             </p>
           ) : null}
 
           {file ? (
-            <div className="rounded-panel border border-ink-700 bg-ink-900 p-4">
-              <p className="text-sm text-ink-100">
-                {file.name} <span className="text-ink-500">· {formatBytes(file.size)}</span>
+            <div className="rounded-panel border border-line bg-surface p-4">
+              <p className="text-sm text-fg">
+                {file.name} <span className="text-fg-faint">· {formatBytes(file.size)}</span>
               </p>
             </div>
           ) : null}
@@ -271,7 +260,7 @@ export function UploadFlow({
 
       {step === 2 ? (
         <section className="flex flex-col gap-5">
-          <p className="max-w-prose text-sm leading-relaxed text-ink-400">
+          <p className="max-w-prose text-sm leading-relaxed text-fg-soft">
             Tell us who to follow. This is what a reviewer uses to find you on the tape.
           </p>
 
@@ -353,17 +342,17 @@ export function UploadFlow({
             </Field>
           </div>
 
-          <div className="rounded-panel border border-ink-700 bg-ink-900 p-4">
+          <div className="rounded-panel border border-line bg-surface p-4">
             <SectionLabel>Player identity</SectionLabel>
-            <p className="mt-2 text-sm text-ink-100">
+            <p className="mt-2 text-sm text-fg">
               {teamColor} · #{jerseyNumber || "—"}
               {marker ? ` · ${marker}` : ""}
             </p>
-            {file ? <p className="mt-1 text-sm text-ink-500">{file.name}</p> : null}
+            {file ? <p className="mt-1 text-sm text-fg-faint">{file.name}</p> : null}
           </div>
 
           {error ? (
-            <p role="alert" className="text-sm text-signal-bad">
+            <p role="alert" className="text-sm text-bad">
               {error}
             </p>
           ) : null}
@@ -382,12 +371,12 @@ export function UploadFlow({
       {step === 4 ? (
         <section className="flex flex-col gap-4">
           <SectionLabel>Uploading</SectionLabel>
-          <p className="text-sm text-ink-300">
+          <p className="text-sm text-fg-soft">
             {file?.name} · {file ? formatBytes(file.size) : ""}
           </p>
 
           <div
-            className="h-1 w-full overflow-hidden rounded-full bg-ink-800"
+            className="h-1 w-full overflow-hidden rounded-full bg-sunken"
             role="progressbar"
             aria-valuenow={Math.round(progress * 100)}
             aria-valuemin={0}
@@ -395,17 +384,15 @@ export function UploadFlow({
             aria-label="Upload progress"
           >
             <div
-              className="h-full bg-lime-accent transition-[width] duration-200"
+              className="h-full bg-accent transition-[width] duration-200"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
-          <p className="font-mono text-xs text-ink-500 tabular-nums">
-            {Math.round(progress * 100)}%
-          </p>
+          <p className="timecode text-fg-faint">{Math.round(progress * 100)}%</p>
 
           {error ? (
             <div role="alert" className="flex flex-col items-start gap-3">
-              <p className="text-sm text-signal-bad">{error}</p>
+              <p className="text-sm text-bad">{error}</p>
               <div className="flex gap-3">
                 <Button onClick={() => void upload()}>Retry upload</Button>
                 <Button

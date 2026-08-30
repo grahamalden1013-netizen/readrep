@@ -47,13 +47,13 @@ export function RepPreviewModal({
       role="dialog"
       aria-modal="true"
       aria-label="Rep preview"
-      className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/95 p-4 sm:p-8"
+      className="shell-film fixed inset-0 z-50 overflow-y-auto bg-canvas/97 p-4 sm:p-8"
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="label-caps text-lime-accent">Preview</p>
-            <p className="mt-1 text-sm text-ink-400">
+            <p className="label-caps text-accent">Preview</p>
+            <p className="mt-1 text-sm text-fg-soft">
               Exactly what a player sees. Nothing is recorded.
             </p>
           </div>

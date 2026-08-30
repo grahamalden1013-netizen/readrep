@@ -9,30 +9,27 @@ const LINKS = [
 
 export function SiteNav({ demoHref }: { demoHref: string }) {
   return (
-    <header className="border-b border-rule">
-      <nav
-        aria-label="Primary"
-        className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-5 sm:px-8"
-      >
-        <Wordmark tone="light" />
+    <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur">
+      <nav aria-label="Primary" className="page-shell flex h-14 items-center justify-between gap-4">
+        <Wordmark />
 
         <div className="flex items-center gap-1 sm:gap-2">
           {LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="hidden rounded-[3px] px-2.5 py-1.5 text-[0.8125rem] text-graphite-700 transition-[color] hover:text-graphite-950 sm:block"
+              className="hidden rounded-xs px-2.5 py-1.5 text-[0.8125rem] font-medium text-fg-faint transition-[color] duration-150 hover:text-fg sm:block"
             >
               {link.label}
             </Link>
           ))}
           <Link
             href="/login"
-            className="rounded-[3px] px-2.5 py-1.5 text-[0.8125rem] text-graphite-700 transition-[color] hover:text-graphite-950"
+            className="rounded-xs px-2.5 py-1.5 text-[0.8125rem] font-medium text-fg-faint transition-[color] duration-150 hover:text-fg"
           >
             Sign in
           </Link>
-          <ButtonLink href={demoHref} variant="court" className="ml-1 h-9 px-3.5 text-[0.8125rem]">
+          <ButtonLink href={demoHref} size="sm" className="ml-1">
             Try a rep
           </ButtonLink>
         </div>
