@@ -69,6 +69,20 @@ function firstAsset(value: GameRow["video_assets"]): VideoAssetRow | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+/**
+ * PostgREST serialises `timestamptz` with a numeric offset
+ * (`2026-08-31T01:20:31.7Z` → `...+00:00`), which `z.string().datetime()`
+ * rejects. Every timestamp the app produces itself is `Date#toISOString()`
+ * (`...Z`), so normalise DB values to the same canonical form on the way in.
+ */
+function toIso(value: string): string {
+  return new Date(value).toISOString();
+}
+
+function toIsoOrNull(value: string | null): string | null {
+  return value === null ? null : toIso(value);
+}
+
 function toVideoAsset(row: VideoAssetRow | null): VideoAsset | null {
   if (!row) return null;
   return {
@@ -81,8 +95,8 @@ function toVideoAsset(row: VideoAssetRow | null): VideoAsset | null {
     aspectRatio: row.aspect_ratio,
     error: row.error,
     fileName: row.file_name,
-    readyAt: row.ready_at,
-    updatedAt: row.updated_at,
+    readyAt: toIsoOrNull(row.ready_at),
+    updatedAt: toIso(row.updated_at),
   };
 }
 
@@ -100,7 +114,7 @@ function toGame(row: GameRow): Game {
     video: null,
     videoAsset: toVideoAsset(firstAsset(row.video_assets)),
     origin: row.origin === "demo" ? "demo" : "upload",
-    createdAt: row.created_at,
+    createdAt: toIso(row.created_at),
   });
 }
 
@@ -110,7 +124,7 @@ function toRep(row: RepRow): Rep {
     gameId: row.game_id,
     order: row.position,
     status: row.status,
-    publishedAt: row.published_at,
+    publishedAt: toIsoOrNull(row.published_at),
     title: row.title,
     category: row.category,
     difficulty: row.difficulty,

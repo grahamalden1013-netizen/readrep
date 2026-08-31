@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -56,5 +57,13 @@ export async function signup(formData: FormData) {
 export async function logout() {
   const supabase = await createClient();
   await supabase?.auth.signOut();
+  // Clear the session cookies explicitly. The server client's cookie adapter
+  // deliberately ignores auth-cookie *removals* (so a transient auth-server
+  // error can't log a user out mid-request), so sign-out has to delete them
+  // here, where the intent is unambiguous.
+  const store = await cookies();
+  for (const cookie of store.getAll()) {
+    if (cookie.name.includes("-auth-token")) store.delete(cookie.name);
+  }
   redirect("/");
 }

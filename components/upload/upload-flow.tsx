@@ -143,15 +143,19 @@ export function UploadFlow({
       });
     } catch {
       // A Server Action that threw (network drop, or an unexpected server
-      // fault). Never leave the bar sitting at 0% — surface it and let the
-      // player retry.
+      // fault). Never leave the bar sitting at 0%: put the player back on the
+      // filled-in form with the reason, so they can just press the button again.
       setUploading(false);
+      setStep(3);
       setError("Could not reach the server to start the upload. Try again.");
       return;
     }
 
     if (!started.ok) {
+      // Nothing was created — return to the (still-populated) confirm step and
+      // show why, rather than stranding a 0% progress bar.
       setUploading(false);
+      setStep(3);
       if (started.code === "auth-required") setNeedsLogin(true);
       setError(started.error);
       return;
@@ -366,16 +370,31 @@ export function UploadFlow({
           </div>
 
           {error ? (
-            <p role="alert" className="text-sm text-bad">
-              {error}
-            </p>
+            <div role="alert" className="flex flex-col items-start gap-2">
+              <p className="text-sm text-bad">{error}</p>
+              {needsLogin ? (
+                <ButtonLink
+                  href={`/login?redirectTo=${encodeURIComponent("/games/new")}`}
+                  variant="secondary"
+                >
+                  Log in to upload
+                </ButtonLink>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="flex gap-3">
             <Button onClick={() => void upload()} disabled={!step3Valid || !uploadsEnabled} size="lg">
               Upload and analyze
             </Button>
-            <Button variant="ghost" onClick={() => setStep(2)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setError(null);
+                setNeedsLogin(false);
+                setStep(2);
+              }}
+            >
               Back
             </Button>
           </div>
@@ -408,20 +427,11 @@ export function UploadFlow({
             <div role="alert" className="flex flex-col items-start gap-3">
               <p className="text-sm text-bad">{error}</p>
               <div className="flex gap-3">
-                {needsLogin ? (
-                  <ButtonLink
-                    href={`/login?redirectTo=${encodeURIComponent("/games/new")}`}
-                  >
-                    Log in to upload
-                  </ButtonLink>
-                ) : (
-                  <Button onClick={() => void upload()}>Retry upload</Button>
-                )}
+                <Button onClick={() => void upload()}>Retry upload</Button>
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setError(null);
-                    setNeedsLogin(false);
                     setStep(3);
                   }}
                 >
