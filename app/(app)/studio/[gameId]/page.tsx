@@ -11,6 +11,8 @@ import { SKILL_CATEGORY_LABELS } from "@/lib/reps/schema";
 import { formatTimecode } from "@/lib/reps/timing";
 import { getGame, getRepsForGame } from "@/lib/store";
 import { getPlayableVideo, getVideoDurationMs } from "@/lib/video/playback";
+import { getLatestAiRepJobForGame } from "@/lib/actions/ai-rep";
+import { isAiConfigured } from "@/lib/ai/config";
 
 export const metadata: Metadata = { title: "Studio" };
 
@@ -49,6 +51,16 @@ export default async function StudioGamePage({
   }
 
   const reps = await getRepsForGame(gameId, { includeDrafts: true });
+
+  // AI Rep Copilot: available only with a ready Mux video and the AI key set.
+  const aiEnabled =
+    isAiConfigured() &&
+    source.kind === "hls" &&
+    game.videoAsset?.provider === "mux" &&
+    game.videoAsset.status === "ready" &&
+    Boolean(game.videoAsset.playbackId);
+  const initialAiJob = aiEnabled ? await getLatestAiRepJobForGame(gameId) : null;
+
   const editingId = typeof query.rep === "string" ? query.rep : null;
   const publishedId =
     typeof query.published === "string" ? query.published : null;
@@ -93,6 +105,13 @@ export default async function StudioGamePage({
         durationMs={getVideoDurationMs(game)}
         existingRep={existingRep}
         repCount={reps.length}
+        target={{
+          jerseyNumber: game.identity.jerseyNumber,
+          teamColor: game.identity.teamColor,
+          marker: game.identity.marker ?? null,
+        }}
+        aiEnabled={aiEnabled}
+        initialAiJob={initialAiJob}
         aside={
           <section className="flex flex-col gap-3">
             <SectionLabel>Reps on this game</SectionLabel>

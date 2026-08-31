@@ -12,6 +12,7 @@ import {
 } from "@/components/video/video-surface";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { RepPreviewModal } from "./rep-preview-modal";
+import { AiRepCopilot } from "./ai-rep-copilot";
 import {
   SKILL_CATEGORIES,
   SKILL_CATEGORY_LABELS,
@@ -22,6 +23,8 @@ import {
 } from "@/lib/reps/schema";
 import { formatTimecode, validateRepTiming } from "@/lib/reps/timing";
 import { saveRepDraft } from "@/lib/actions/studio";
+import type { AiRepDraftView } from "@/lib/actions/ai-rep";
+import type { StudioFormDraft } from "@/lib/ai/schemas";
 
 const CHOICE_IDS = ["a", "b", "c", "d"] as const;
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
@@ -49,6 +52,9 @@ export function RepStudio({
   durationMs,
   existingRep,
   repCount,
+  target,
+  aiEnabled,
+  initialAiJob,
   aside,
 }: {
   gameId: string;
@@ -57,6 +63,12 @@ export function RepStudio({
   durationMs: number | null;
   existingRep: Rep | null;
   repCount: number;
+  /** Trusted target-player metadata from the game record. */
+  target: { jerseyNumber: string; teamColor: string; marker: string | null };
+  /** True when the AI Rep Copilot is available for this game. */
+  aiEnabled: boolean;
+  /** Most recent AI analysis for this game, for refresh recovery. */
+  initialAiJob: AiRepDraftView | null;
   /** Rendered under the stage, so the film column is not a column of void. */
   aside?: ReactNode;
 }) {
@@ -115,6 +127,77 @@ export function RepStudio({
   const [saving, setSaving] = useState<"draft" | "publish" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Which form fields currently hold AI-suggested content. */
+  const [aiFields, setAiFields] = useState<Set<string>>(new Set());
+
+  const aiMark = useCallback(
+    (labelText: string, key: string): ReactNode =>
+      aiFields.has(key) ? (
+        <>
+          {labelText}
+          <Chip tone="quiet">AI</Chip>
+        </>
+      ) : (
+        labelText
+      ),
+    [aiFields],
+  );
+
+  const applyAiDraft = useCallback(
+    (draft: StudioFormDraft, replaceExisting: boolean) => {
+      const marks = new Set(aiFields);
+      const put = (key: string, value: string, current: string, set: (v: string) => void) => {
+        if (!value) return;
+        if (!replaceExisting && current.trim().length > 0) return;
+        set(value);
+        marks.add(key);
+      };
+      put("title", draft.title, title, setTitle);
+      put("situation", draft.situation, situation, setSituation);
+      put("prompt", draft.prompt, prompt, setPrompt);
+      put("actualOutcome", draft.actualOutcome, actualOutcome, setActualOutcome);
+      put("explanation", draft.explanation, explanation, setExplanation);
+      put("coachingCue", draft.coachingCue, coachingCue, setCoachingCue);
+
+      if (draft.category && (replaceExisting || category === SKILL_CATEGORIES[0])) {
+        setCategory(draft.category);
+        marks.add("category");
+      }
+      if (draft.difficulty && (replaceExisting || difficulty === "medium")) {
+        setDifficulty(draft.difficulty);
+        marks.add("difficulty");
+      }
+      const hasChoices = choiceLabels.some((l) => l.trim().length > 0);
+      if (draft.choiceLabels.some((l) => l) && (replaceExisting || !hasChoices)) {
+        setChoiceLabels([...draft.choiceLabels]);
+        marks.add("choices");
+        if (draft.correctChoiceId) {
+          setCorrectChoiceId(draft.correctChoiceId);
+          marks.add("correctChoiceId");
+        }
+        if (draft.actualChoiceId) {
+          setActualChoiceId(draft.actualChoiceId);
+          marks.add("actualChoiceId");
+        }
+      }
+
+      setAiFields(marks);
+      setNotice("AI draft applied. Review every field — the coach owns what gets published.");
+      setError(null);
+    },
+    [
+      aiFields,
+      actualOutcome,
+      category,
+      choiceLabels,
+      coachingCue,
+      difficulty,
+      explanation,
+      prompt,
+      situation,
+      title,
+    ],
+  );
 
   const effectiveDuration = measuredDurationMs ?? durationMs;
   const timingIssues = useMemo(
@@ -407,6 +490,30 @@ export function RepStudio({
           </div>
         </div>
 
+        {aiEnabled ? (
+          <AiRepCopilot
+            gameId={gameId}
+            target={target}
+            clip={{
+              clipStartMs: timing.clipStartMs,
+              decisionPauseMs: timing.decisionPauseMs,
+              clipEndMs: timing.clipEndMs,
+            }}
+            clipValid={timingIssues.length === 0}
+            hasPlayableVideo={source.kind === "hls"}
+            initialJob={initialAiJob}
+            onSeekSeconds={(seconds) => seekTo(Math.round(seconds * 1000))}
+            onApplyDraft={applyAiDraft}
+            onUseClipWindow={(next) =>
+              setTiming({
+                clipStartMs: next.clipStartMs,
+                decisionPauseMs: next.decisionPauseMs,
+                clipEndMs: next.clipEndMs,
+              })
+            }
+          />
+        ) : null}
+
         {aside}
       </div>
 
@@ -414,7 +521,7 @@ export function RepStudio({
         <div className="flex flex-col gap-4 rounded-panel border border-line bg-surface p-4 sm:p-5">
           <SectionLabel>{existingRep ? "Edit rep" : "New rep"}</SectionLabel>
 
-          <Field label="Title">
+          <Field label={aiMark("Title", "title")}>
             <input
               className={inputClass}
               value={title}
@@ -425,7 +532,7 @@ export function RepStudio({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Skill category">
+            <Field label={aiMark("Skill category", "category")}>
               <select
                 className={inputClass}
                 value={category}
@@ -440,7 +547,7 @@ export function RepStudio({
                 ))}
               </select>
             </Field>
-            <Field label="Difficulty">
+            <Field label={aiMark("Difficulty", "difficulty")}>
               <select
                 className={inputClass}
                 value={difficulty}
@@ -457,7 +564,7 @@ export function RepStudio({
             </Field>
           </div>
 
-          <Field label="Situation" hint="Shown before the clip plays">
+          <Field label={aiMark("Situation", "situation")} hint="Shown before the clip plays">
             <textarea
               className={textareaClass}
               rows={2}
@@ -468,7 +575,7 @@ export function RepStudio({
             />
           </Field>
 
-          <Field label="Prompt" hint="The question at the decision point">
+          <Field label={aiMark("Prompt", "prompt")} hint="The question at the decision point">
             <textarea
               className={textareaClass}
               rows={3}
@@ -480,8 +587,9 @@ export function RepStudio({
           </Field>
 
           <fieldset className="flex flex-col gap-2">
-            <legend className="label-caps mb-1 text-fg-faint">
+            <legend className="label-caps mb-1 flex items-center gap-1.5 text-fg-faint">
               Answer choices
+              {aiFields.has("choices") ? <Chip tone="quiet">AI</Chip> : null}
             </legend>
             <p className="mb-1 text-xs text-fg-faint">
               Two to four. Leave a row blank to drop it.
@@ -509,7 +617,7 @@ export function RepStudio({
           </fieldset>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Best read">
+            <Field label={aiMark("Best read", "correctChoiceId")}>
               <select
                 className={inputClass}
                 value={correctChoiceId}
@@ -526,7 +634,7 @@ export function RepStudio({
                 ))}
               </select>
             </Field>
-            <Field label="What they did">
+            <Field label={aiMark("What they did", "actualChoiceId")}>
               <select
                 className={inputClass}
                 value={actualChoiceId}
@@ -544,7 +652,7 @@ export function RepStudio({
             </Field>
           </div>
 
-          <Field label="What happened">
+          <Field label={aiMark("What happened", "actualOutcome")}>
             <input
               className={inputClass}
               value={actualOutcome}
@@ -554,7 +662,7 @@ export function RepStudio({
             />
           </Field>
 
-          <Field label="Coaching explanation">
+          <Field label={aiMark("Coaching explanation", "explanation")}>
             <textarea
               className={textareaClass}
               rows={4}
@@ -565,7 +673,7 @@ export function RepStudio({
           </Field>
 
           <Field
-            label="Coaching cue"
+            label={aiMark("Coaching cue", "coachingCue")}
             hint="One line the player carries into the next game"
           >
             <input

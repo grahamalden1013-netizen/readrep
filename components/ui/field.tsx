@@ -12,13 +12,13 @@ export function Field({
   hint,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   hint?: string;
   children: ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="label-caps text-fg-faint">{label}</span>
+      <span className="label-caps flex items-center gap-1.5 text-fg-faint">{label}</span>
       {children}
       {hint ? (
         <span className="text-xs leading-relaxed text-fg-faint">{hint}</span>
