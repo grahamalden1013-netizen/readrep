@@ -78,15 +78,23 @@ export async function syncGameVideo(
     const assetId = patch.assetId ?? asset.assetId;
     if (assetId) {
       const remote = await provider.getAsset(assetId);
+      const playbackId = remote.playbackId ?? asset.playbackId ?? null;
+      // "ready" has to mean *playable*. If the host reports ready but has not
+      // handed us a playback id yet, keep the game in processing so the studio
+      // never opens onto a player it cannot feed.
+      const status =
+        remote.status === "ready" && !playbackId
+          ? "processing"
+          : assetStatusToVideoStatus(remote.status);
       patch = {
         ...patch,
         assetId,
-        status: assetStatusToVideoStatus(remote.status),
+        status,
         playbackId: remote.playbackId ?? undefined,
         durationSeconds: remote.durationSeconds ?? undefined,
         aspectRatio: remote.aspectRatio ?? undefined,
         error: remote.error ?? undefined,
-        readyAt: remote.status === "ready" ? new Date().toISOString() : undefined,
+        readyAt: status === "ready" ? new Date().toISOString() : undefined,
       };
     }
   } catch (cause) {
@@ -125,12 +133,14 @@ export function patchFromWebhook(event: VideoWebhookEvent): Partial<VideoAsset> 
 
     case "video.asset.ready":
       return {
-        status: "ready",
+        // A ready asset with no playback id is not playable — hold at processing
+        // and let a later poll/webhook fill the id in.
+        status: event.playbackId ? "ready" : "processing",
         assetId: event.assetId ?? undefined,
         playbackId: event.playbackId ?? undefined,
         durationSeconds: event.durationSeconds ?? undefined,
         aspectRatio: event.aspectRatio ?? undefined,
-        readyAt: new Date().toISOString(),
+        readyAt: event.playbackId ? new Date().toISOString() : undefined,
       };
 
     case "video.asset.errored":

@@ -37,8 +37,11 @@ export type VideoSurfaceProps = {
   onCanPlay?: () => void;
   onTimeUpdate?: (currentMs: number) => void;
   onPlayStateChange?: (paused: boolean) => void;
-  onError?: (message: string) => void;
+  /** `null` clears a previously reported error once playback recovers. */
+  onError?: (message: string | null) => void;
   captionsOn?: boolean;
+  /** Autoplay needs a muted element; a film being reviewed does not. */
+  muted?: boolean;
   className?: string;
 };
 
@@ -46,8 +49,9 @@ export type VideoSurfaceProps = {
  * The one place that talks to a media element.
  *
  * Progressive sources go straight into <source> children. HLS (how Mux serves
- * playback) is native on Safari and iOS and needs hls.js everywhere else, so
- * the library is imported lazily and only when an HLS source is actually used.
+ * playback) needs Media Source Extensions via hls.js in Chrome, Firefox and
+ * Edge; only Safari and iOS play it off a plain `<video src>`. hls.js is
+ * imported lazily and only when an HLS source is actually used.
  */
 export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(function VideoSurface(
   {
@@ -60,6 +64,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
     onPlayStateChange,
     onError,
     captionsOn = false,
+    muted = true,
     className = "",
   },
   ref,
@@ -68,6 +73,9 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
   const stopRef = useRef<number | null>(stopAtMs);
   const firedRef = useRef(false);
   const frameRef = useRef<number | null>(null);
+  /** True while hls.js owns the pipeline: its own ERROR handler drives recovery,
+   *  so the element's generic `error` event must be ignored. */
+  const hlsActiveRef = useRef(false);
 
   // Callbacks live in refs so the rAF loop is installed once and never
   // reinstalled by a parent re-render.
@@ -75,6 +83,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
   const onTimeUpdateRef = useRef(onTimeUpdate);
   const onCanPlayRef = useRef(onCanPlay);
   const onLoadedMetadataRef = useRef(onLoadedMetadata);
+  const onErrorRef = useRef(onError);
   const [isBuffering, setIsBuffering] = useState(false);
 
   useEffect(() => {
@@ -82,6 +91,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
     onTimeUpdateRef.current = onTimeUpdate;
     onCanPlayRef.current = onCanPlay;
     onLoadedMetadataRef.current = onLoadedMetadata;
+    onErrorRef.current = onError;
   });
 
   /*
@@ -113,38 +123,68 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
     const video = videoRef.current;
     if (!video || !hlsSrc) return;
 
-    // Safari and iOS play HLS natively; everything else needs Media Source.
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = hlsSrc;
-      return;
-    }
-
     let destroyed = false;
     let instance: { destroy: () => void } | null = null;
+    let recoveries = 0;
+    const cleanupVideo = video;
 
     void (async () => {
       const { default: Hls } = await import("hls.js");
-      if (destroyed) return;
-      if (!Hls.isSupported()) {
-        onError?.("This browser cannot play the video format.");
+      const el = videoRef.current;
+      if (destroyed || !el) return;
+
+      // Prefer hls.js wherever Media Source Extensions exist — Chrome, Firefox,
+      // Edge, Android Chrome. Those browsers now report
+      // canPlayType("application/vnd.apple.mpegurl") === "maybe" *without* real
+      // native HLS support, so trusting that check hands the <video> element a
+      // manifest it cannot demux and it fails with MEDIA_ERR_SRC_NOT_SUPPORTED.
+      if (Hls.isSupported()) {
+        hlsActiveRef.current = true;
+        const hls = new Hls({ enableWorker: true });
+        instance = hls;
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => onErrorRef.current?.(null));
+
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && recoveries < 3) {
+            recoveries += 1;
+            hls.startLoad();
+            return;
+          }
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR && recoveries < 3) {
+            recoveries += 1;
+            hls.recoverMediaError();
+            return;
+          }
+          hls.destroy();
+          onErrorRef.current?.(
+            "The film stream stopped loading. Check your connection and retry.",
+          );
+        });
+
+        hls.loadSource(hlsSrc);
+        hls.attachMedia(video);
         return;
       }
-      const hls = new Hls({ enableWorker: true });
-      instance = hls;
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) onError?.("The video stream failed to load.");
-      });
-      hls.loadSource(hlsSrc);
-      hls.attachMedia(video);
+
+      // Real Safari / iOS: the media element plays HLS itself.
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = hlsSrc;
+        return;
+      }
+
+      onErrorRef.current?.("This browser cannot play the film format.");
     })();
 
     return () => {
       destroyed = true;
+      hlsActiveRef.current = false;
       instance?.destroy();
+      if (cleanupVideo.src.startsWith("blob:")) cleanupVideo.removeAttribute("src");
     };
-    // onError is intentionally excluded: re-attaching HLS on a parent
-    // re-render would restart the stream mid-rep.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-attaching HLS on a parent re-render would restart the stream mid-rep,
+    // so this runs only when the source URL itself changes.
   }, [hlsSrc]);
 
   useEffect(() => {
@@ -226,7 +266,7 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
         ref={videoRef}
         poster={source.posterSrc}
         playsInline
-        muted
+        muted={muted}
         preload="auto"
         className="h-full w-full object-contain"
         onWaiting={() => setIsBuffering(true)}
@@ -237,13 +277,22 @@ export const VideoSurface = forwardRef<VideoSurfaceHandle, VideoSurfaceProps>(fu
         onPause={() => onPlayStateChange?.(true)}
         onCanPlay={() => {
           setIsBuffering(false);
+          onError?.(null);
           onCanPlay?.();
         }}
         onLoadedMetadata={(event) => {
           const duration = event.currentTarget.duration;
-          if (Number.isFinite(duration)) onLoadedMetadata?.(duration * 1000);
+          if (Number.isFinite(duration)) {
+            onError?.(null);
+            onLoadedMetadata?.(duration * 1000);
+          }
         }}
-        onError={() => onError?.("The film could not be loaded.")}
+        onError={() => {
+          // hls.js runs its own recovery for MSE playback; only a plain-<video>
+          // failure (native Safari/iOS HLS, or a progressive file) surfaces here.
+          if (hlsActiveRef.current) return;
+          onError?.("The film could not be loaded. Retry in a moment.");
+        }}
       >
         {!isHls && source.kind === "progressive"
           ? source.encodings.map((encoding) => (

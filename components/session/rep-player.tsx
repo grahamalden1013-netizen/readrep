@@ -209,7 +209,7 @@ export function RepPlayer({
               source={source}
               stopAtMs={stopAtMs}
               onReachedStop={handleReachedStop}
-              onError={() => setVideoFailed(true)}
+              onError={(message) => setVideoFailed(message !== null)}
               captionsOn={captionsOn}
             />
 

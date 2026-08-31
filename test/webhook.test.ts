@@ -214,6 +214,27 @@ test("an asset.ready event moves the game to ready with playback details", async
   assert.ok(asset?.readyAt);
 });
 
+test("an asset.ready event with no playback id is held at processing", () => {
+  // "ready" has to mean playable. Mux always sends playback_ids for a policy'd
+  // asset, but a delivery that somehow arrives without one must not open the
+  // studio onto a player it cannot feed.
+  const patch = patchFromWebhook({
+    id: "evt_no_pb",
+    type: "video.asset.ready",
+    uploadId: "upload_1",
+    assetId: "asset_1",
+    passthrough: "game-1",
+    assetStatus: "ready",
+    playbackId: null,
+    durationSeconds: 118,
+    aspectRatio: "16:9",
+    error: null,
+  });
+
+  assert.equal(patch?.status, "processing");
+  assert.equal(patch?.readyAt, undefined);
+});
+
 test("a duplicate delivery is skipped rather than applied twice", async () => {
   const backend = new MemoryBackend(gameWithAsset());
   const provider = new MuxVideoProvider(CREDENTIALS);

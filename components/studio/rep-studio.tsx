@@ -69,6 +69,7 @@ export function RepStudio({
   );
   const [isPaused, setIsPaused] = useState(true);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [playerAttempt, setPlayerAttempt] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const [title, setTitle] = useState(existingRep?.title ?? "");
@@ -252,8 +253,10 @@ export function RepStudio({
       <div className="flex flex-col gap-4">
         <div className="overflow-hidden rounded-frame border border-line bg-surface">
           <VideoSurface
+            key={playerAttempt}
             ref={videoRef}
             source={source}
+            muted={false}
             onTimeUpdate={(ms) => setCurrentMs(ms)}
             onLoadedMetadata={(ms) => setMeasuredDurationMs(ms)}
             onPlayStateChange={setIsPaused}
@@ -310,9 +313,19 @@ export function RepStudio({
         </div>
 
         {videoError ? (
-          <p role="alert" className="text-sm text-bad">
-            {videoError}
-          </p>
+          <div role="alert" className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-bad">{videoError}</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setVideoError(null);
+                setPlayerAttempt((n) => n + 1);
+              }}
+            >
+              Retry
+            </Button>
+          </div>
         ) : null}
 
         <div className="flex flex-col gap-3 rounded-panel border border-line bg-surface p-4">
