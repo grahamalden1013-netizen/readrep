@@ -21,7 +21,8 @@ import {
   type LiveSpan,
   type PossessionWindow,
 } from "./segments";
-import { analyzePossession, type CandidateDraft, type ReferenceFrame } from "./possession";
+import type { CandidateDraft, ReferenceFrame } from "./possession";
+import { analyzeWindowToTerminal, summariseLedger, type WindowLedgerEntry } from "./coverage";
 import { dedupeAndRank } from "./rank";
 import { CANDIDATE_PROMPT_VERSION } from "./schema";
 
@@ -39,9 +40,13 @@ type Cursor = {
   verdicts: LiveFrameVerdict[];
   spans: LiveSpan[];
   windows: PossessionWindow[];
+  /** Next window to analyse. Monotonic — a window is never revisited. */
   possessionIndex: number;
   reasoningCalls: number;
+  retries: number;
   rejections: Rejection[];
+  /** One terminal entry per processed window. length === windows.length when done. */
+  ledger: WindowLedgerEntry[];
 };
 
 function initialCursor(): Cursor {
@@ -53,7 +58,9 @@ function initialCursor(): Cursor {
     windows: [],
     possessionIndex: 0,
     reasoningCalls: 0,
+    retries: 0,
     rejections: [],
+    ledger: [],
   };
 }
 
@@ -197,14 +204,18 @@ async function stepDiscovery(job: GameAnalysisJob, cursor: Cursor): Promise<Tick
 
 async function stepWindows(job: GameAnalysisJob, cursor: Cursor): Promise<TickResult> {
   const all = buildPossessionWindows(cursor.spans);
-  // Spread the reasoning budget evenly across the game rather than front-loading.
-  const windows = all.length <= MAX_REASONING_CALLS ? all : evenSample(all, MAX_REASONING_CALLS);
+  // Keep every window. When the reasoning budget is smaller than the window
+  // count (normal cost-capped runs) the possession step spreads its calls
+  // evenly; when the budget covers them all (the acceptance baseline) every
+  // window is analysed.
+  const windows =
+    all.length <= MAX_REASONING_CALLS ? all : evenSample(all, MAX_REASONING_CALLS);
 
   await gameAnalysisJobs.update(job.id, {
     stage: "finding-decisions",
-    progress_note: "Finding decision moments",
+    progress_note: `Reviewed 0 / ${windows.length}`,
     possession_count: windows.length,
-    cursor: { ...cursor, phase: "possessions", windows, possessionIndex: 0, reasoningCalls: 0 },
+    cursor: { ...cursor, phase: "possessions", windows, possessionIndex: 0, reasoningCalls: 0, ledger: [] },
   });
   return { done: false, stage: "finding-decisions", note: `${windows.length} windows` };
 }
@@ -215,12 +226,18 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
   const { windows } = cursor;
   let idx = cursor.possessionIndex;
   let reasoningCalls = cursor.reasoningCalls;
-  let analyzed = job.analyzedCount ?? 0;
+  let retries = cursor.retries;
   let candidateCount = job.candidateCount ?? 0;
   let usageIn = job.inputTokens ?? 0;
   let usageOut = job.outputTokens ?? 0;
   let cost = job.estimatedCostUsd ?? 0;
   const rejections = [...cursor.rejections];
+  const ledger = [...cursor.ledger];
+  const covered = new Set(ledger.map((e) => e.index));
+
+  // Budget mode: fewer reasoning calls allowed than windows. Full coverage:
+  // the cap is >= the window count, so every window gets analysed.
+  const budgetCapped = MAX_REASONING_CALLS < windows.length;
 
   const profile = await getCoachingProfile().catch(() => null);
   const referenceFrames = await loadReferenceFrames(job);
@@ -228,56 +245,57 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
 
   for (
     let n = 0;
-    n < POSSESSIONS_PER_TICK && idx < windows.length && reasoningCalls < MAX_REASONING_CALLS;
+    n < POSSESSIONS_PER_TICK && idx < windows.length && (!budgetCapped || reasoningCalls < MAX_REASONING_CALLS);
     n += 1, idx += 1
   ) {
-    const window = windows[idx];
-    let result: Awaited<ReturnType<typeof analyzePossession>>;
-    try {
-      result = await analyzePossession(
-        job.playbackId!,
-        window,
-        { jerseyNumber: job.target.jerseyNumber, teamColor: job.target.teamColor, marker: job.target.marker },
-        referenceFrames,
-        profile,
-        refHint,
-      );
-    } catch (cause) {
-      // A transient provider failure on one window must not kill a 20-call job.
-      // Record it and move on; the run still produces a queue from the rest.
-      const err = toAiError(cause);
-      reasoningCalls += 1;
-      analyzed += 1;
-      rejections.push({ window, reason: "provider-error", detail: err.code });
-      await gameAnalysisJobs.heartbeat(job.id);
-      continue;
-    }
-    reasoningCalls += 1;
-    analyzed += 1;
-    usageIn += result.usage.input;
-    usageOut += result.usage.output;
-    const p = priceFor(result.model);
-    cost += (result.usage.input / 1e6) * p.in + (result.usage.output / 1e6) * p.out;
+    if (covered.has(idx)) continue; // never analyse the same window twice
 
-    if (result.kind === "rejected") {
-      rejections.push({ window, reason: result.reason, detail: result.detail });
-    } else {
+    const window = windows[idx];
+    const wr = await analyzeWindowToTerminal(
+      idx,
+      window,
+      job.playbackId!,
+      { jerseyNumber: job.target.jerseyNumber, teamColor: job.target.teamColor, marker: job.target.marker },
+      referenceFrames,
+      profile,
+      refHint,
+    );
+
+    reasoningCalls += 1;
+    retries += wr.retries;
+    usageIn += wr.usage.input;
+    usageOut += wr.usage.output;
+    if (wr.model) {
+      const p = priceFor(wr.model);
+      cost += (wr.usage.input / 1e6) * p.in + (wr.usage.output / 1e6) * p.out;
+    }
+    ledger.push(wr.ledger);
+    covered.add(idx);
+
+    if (wr.analyzed && (wr.analyzed.kind === "candidate" || wr.analyzed.kind === "flagged")) {
       candidateCount += 1;
       await candidateReps.insert([
-        candidateRow(job, result.draft, result.kind === "flagged" ? "needs_attention" : "pending_review"),
+        candidateRow(job, wr.analyzed.draft, wr.analyzed.kind === "flagged" ? "needs_attention" : "pending_review"),
       ]);
+    } else {
+      rejections.push({ window, reason: wr.ledger.outcome, detail: wr.ledger.reason });
     }
 
     await gameAnalysisJobs.heartbeat(job.id);
   }
 
-  const possessionsDone = idx >= windows.length || reasoningCalls >= MAX_REASONING_CALLS;
+  // Not done until every window has a terminal ledger entry — unless a
+  // cost-capped run has spent its reasoning budget.
+  const coverageComplete = ledger.length >= windows.length;
+  const possessionsDone = coverageComplete || (budgetCapped && reasoningCalls >= MAX_REASONING_CALLS);
+  const summary = summariseLedger(ledger);
 
   await gameAnalysisJobs.update(job.id, {
     stage: possessionsDone ? "ranking" : "finding-decisions",
-    progress_note: possessionsDone ? "Building your reps" : "Finding decision moments",
-    analyzed_count: analyzed,
+    progress_note: possessionsDone ? "Building your reps" : `Reviewed ${ledger.length} / ${windows.length}`,
+    analyzed_count: ledger.length,
     candidate_count: candidateCount,
+    rejected_count: ledger.length - summary["valid-decision"],
     reasoning_calls: reasoningCalls,
     input_tokens: usageIn,
     output_tokens: usageOut,
@@ -287,13 +305,15 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
       phase: possessionsDone ? "rank" : "possessions",
       possessionIndex: idx,
       reasoningCalls,
+      retries,
       rejections,
+      ledger,
     },
   });
   return {
     done: false,
     stage: possessionsDone ? "ranking" : "finding-decisions",
-    note: `${idx}/${windows.length} possessions, ${candidateCount} candidates`,
+    note: `${ledger.length}/${windows.length} windows · ${summary["valid-decision"]} decisions`,
   };
 }
 

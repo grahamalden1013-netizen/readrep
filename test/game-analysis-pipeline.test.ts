@@ -20,6 +20,7 @@ import {
   confirmedReferenceSchema,
   confirmedReferenceSetSchema,
 } from "@/lib/ai/game-analysis/reference";
+import { classifyOutcome, summariseLedger } from "@/lib/ai/game-analysis/coverage-outcomes";
 import {
   COACHING_QUESTIONS,
   isProfileComplete,
@@ -309,6 +310,62 @@ test("confirmedReferenceSetSchema needs at least one with the number visible", (
 test("confirmedReferenceSetSchema caps at 3 references", () => {
   const four = [oneRef(), oneRef({ timestampSeconds: 2 }), oneRef({ timestampSeconds: 3 }), oneRef({ timestampSeconds: 4 })];
   assert.equal(confirmedReferenceSetSchema.safeParse(four).success, false);
+});
+
+// --- window coverage outcomes ----------------------------------
+
+const usg = { input: 0, output: 0 };
+
+test("classifyOutcome maps every analyzer result to one of the five buckets", () => {
+  assert.equal(
+    classifyOutcome({ kind: "candidate", draft: {} as never, usage: usg, model: "m" }).outcome,
+    "valid-decision",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "flagged", draft: {} as never, reason: "low decision confidence", usage: usg, model: "m" })
+      .outcome,
+    "valid-decision",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "rejected", reason: "target-not-visible", detail: "", usage: usg, model: "m" }).outcome,
+    "target-not-visible",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "rejected", reason: "low-identification", detail: "id 0.40", usage: usg, model: "m" })
+      .outcome,
+    "target-not-visible",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "rejected", reason: "no-decision", detail: "", usage: usg, model: "m" }).outcome,
+    "target-no-decision",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "rejected", reason: "bad-timing", detail: "", usage: usg, model: "m" }).outcome,
+    "target-no-decision",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "rejected", reason: "invalid-output", detail: "not json", usage: usg, model: "m" }).outcome,
+    "invalid-output",
+  );
+  assert.equal(
+    classifyOutcome({ kind: "rejected", reason: "frames-unavailable", detail: "only 3", usage: usg, model: "m" })
+      .outcome,
+    "processing-failure",
+  );
+});
+
+test("summariseLedger tallies the buckets and total", () => {
+  const s = summariseLedger([
+    { index: 0, startSeconds: 0, endSeconds: 18, outcome: "valid-decision", reason: "candidate", attempts: 1 },
+    { index: 1, startSeconds: 14, endSeconds: 32, outcome: "target-not-visible", reason: "not visible", attempts: 1 },
+    { index: 2, startSeconds: 28, endSeconds: 46, outcome: "target-not-visible", reason: "not visible", attempts: 1 },
+    { index: 3, startSeconds: 42, endSeconds: 60, outcome: "processing-failure", reason: "provider-unavailable", attempts: 3 },
+  ]);
+  assert.equal(s.total, 4);
+  assert.equal(s["valid-decision"], 1);
+  assert.equal(s["target-not-visible"], 2);
+  assert.equal(s["processing-failure"], 1);
+  assert.equal(s["target-no-decision"], 0);
 });
 
 // --- coaching profile relevance ----------------------------------

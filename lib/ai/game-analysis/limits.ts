@@ -26,8 +26,14 @@ export const POSSESSION_WINDOW_OVERLAP_SECONDS = 4;
 export const MIN_POSSESSION_WINDOW_SECONDS = 8;
 
 // --- Stage C/D: expensive per-possession reasoning --------------------
-/** Hard cap on expensive reasoning calls for one game. */
-export const MAX_REASONING_CALLS = 20;
+/**
+ * Default cost ceiling on expensive reasoning calls for one game. A run can ask
+ * for full coverage (every window) via OPENAI_MAX_REASONING_CALLS or the job's
+ * own request; the acceptance baseline uses full coverage.
+ */
+export const MAX_REASONING_CALLS = Number(process.env.OPENAI_MAX_REASONING_CALLS) || 20;
+/** A window that throws is retried this many times before it is `processing-failure`. */
+export const MAX_WINDOW_ATTEMPTS = 3;
 /** Frames sent per possession to the reasoning model. */
 export const POSSESSION_FRAMES = 14;
 export const POSSESSION_FRAME_WIDTH = 852;
