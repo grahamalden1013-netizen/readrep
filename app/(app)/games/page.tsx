@@ -61,8 +61,8 @@ export default async function GamesPage() {
               actions={
                 <>
                   {status.ready ? (
-                    <ButtonLink href={`/studio/${game.id}`} variant="secondary" size="sm">
-                      Open studio
+                    <ButtonLink href={`/games/${game.id}/analysis`} size="sm">
+                      Analyze
                     </ButtonLink>
                   ) : (
                     <ButtonLink
@@ -74,8 +74,13 @@ export default async function GamesPage() {
                     </ButtonLink>
                   )}
                   {published > 0 ? (
-                    <ButtonLink href={`/games/${game.id}/processing`} size="sm">
+                    <ButtonLink href={`/games/${game.id}/processing`} variant="secondary" size="sm">
                       Take reps
+                    </ButtonLink>
+                  ) : null}
+                  {status.ready ? (
+                    <ButtonLink href={`/games/${game.id}/advanced`} variant="ghost" size="sm">
+                      Studio
                     </ButtonLink>
                   ) : null}
                 </>

@@ -145,8 +145,8 @@ export function VideoStatus({
         </p>
       ) : (
         <p className="text-sm leading-relaxed text-fg-faint">
-          Status comes straight from the video host. NextRep does not detect decision moments
-          automatically — once the film is ready, a reviewer marks them in the studio.
+          Status comes straight from the video host. Once the film is ready, pick a player and
+          NextRep finds the decisions worth replaying.
         </p>
       )}
 
@@ -193,17 +193,11 @@ export function VideoStatus({
 
       {status.status === "ready" ? (
         <div className="flex flex-wrap gap-3">
-          {hasReps ? (
-            <ButtonLink href={`/studio/${gameId}`} size="lg" variant="secondary">
-              Open in studio
-            </ButtonLink>
-          ) : (
-            <ButtonLink href={`/studio/${gameId}`} size="lg">
-              Mark the first decision
-            </ButtonLink>
-          )}
-          <ButtonLink href="/dashboard" variant="ghost">
-            Back to dashboard
+          <ButtonLink href={`/games/${gameId}/analysis`} size="lg">
+            {hasReps ? "Analyze another player" : "Analyze game"}
+          </ButtonLink>
+          <ButtonLink href={`/games/${gameId}/advanced`} variant="ghost">
+            Build reps manually
           </ButtonLink>
         </div>
       ) : null}

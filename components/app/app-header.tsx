@@ -8,6 +8,7 @@ import { Wordmark } from "@/components/wordmark";
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/games", label: "Film" },
+  { href: "/settings", label: "Profile" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -15,6 +16,7 @@ function isActive(pathname: string, href: string) {
     return (
       pathname.startsWith("/dashboard") || pathname.startsWith("/sessions")
     );
+  if (href === "/settings") return pathname.startsWith("/settings");
   return pathname.startsWith("/games") || pathname.startsWith("/studio");
 }
 

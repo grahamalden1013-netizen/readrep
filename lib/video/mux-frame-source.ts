@@ -20,6 +20,45 @@ import {
 const MUX_IMAGE_HOST = "https://image.mux.com";
 
 /**
+ * Fetch one Mux thumbnail as a base64 data URL, server-side. Returns null on any
+ * miss (timeout, non-200, empty, oversized). The signed/URL detail never leaves
+ * this function. Used by both the clip Copilot and full-game discovery.
+ */
+export async function fetchMuxFrame(
+  playbackId: string,
+  timeSeconds: number,
+  width: number,
+  timeoutMs = 8_000,
+): Promise<SampledFrame | null> {
+  if (!playbackId || /^https?:/i.test(playbackId)) return null;
+  const w = Math.min(1280, Math.max(240, Math.round(width)));
+  const url = `${MUX_IMAGE_HOST}/${encodeURIComponent(playbackId)}/thumbnail.webp?time=${Math.max(
+    0,
+    timeSeconds,
+  ).toFixed(2)}&width=${w}&fit_mode=preserve`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: "no-store" });
+    if (!response.ok) return null;
+    const buffer = new Uint8Array(await response.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > MAX_SINGLE_IMAGE_BYTES) return null;
+    const mimeType = (response.headers.get("content-type") ?? "image/webp").split(";")[0].trim() || "image/webp";
+    return {
+      timestampSeconds: Math.max(0, timeSeconds),
+      dataUrl: `data:${mimeType};base64,${Buffer.from(buffer).toString("base64")}`,
+      byteLength: buffer.length,
+      width: w,
+      mimeType,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Pulls still frames from Mux's public thumbnail endpoint, server-side.
  *
  * `image.mux.com/{playbackId}/thumbnail.webp?time=<s>&width=<px>` needs no
