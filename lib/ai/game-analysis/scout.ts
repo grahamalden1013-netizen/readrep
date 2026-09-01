@@ -140,7 +140,7 @@ async function verifyBatch(
   }
   if (frames.length === 0) return { verdicts: new Map(), usage: { input: 0, output: 0 } };
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: 90_000, maxRetries: 1 });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: 90_000, maxRetries: 2 });
   const content: OpenAI.Responses.ResponseInputContent[] = [
     {
       type: "input_text",
@@ -199,7 +199,7 @@ async function classifyBatch(
   teamColor: string,
   jerseyNumber: string,
 ): Promise<{ verdicts: FrameVerdict[]; usage: { input: number; output: number } }> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: 60_000, maxRetries: 1 });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: 60_000, maxRetries: 2 });
   const content: OpenAI.Responses.ResponseInputContent[] = [
     {
       type: "input_text",

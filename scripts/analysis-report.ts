@@ -105,14 +105,22 @@ async function main() {
   let outTok = live.usage.output + scout.usage.output;
 
   for (const w of windows) {
-    const res = await analyzePossession(
-      GAME.playbackId,
-      w,
-      { jerseyNumber: GAME.jerseyNumber, teamColor: GAME.teamColor.toLowerCase(), marker: "White uniform, number 15" },
-      referenceFrames,
-      null,
-      { cues: ["White uniform, number 15"], anyNumberVisible },
-    );
+    let res;
+    try {
+      res = await analyzePossession(
+        GAME.playbackId,
+        w,
+        { jerseyNumber: GAME.jerseyNumber, teamColor: GAME.teamColor.toLowerCase(), marker: "White uniform, number 15" },
+        referenceFrames,
+        null,
+        { cues: ["White uniform, number 15"], anyNumberVisible },
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      rejected.push({ window: `${clock(w.startSeconds)}-${clock(w.endSeconds)}`, reason: "provider-error", detail: msg });
+      console.log(`  window ${clock(w.startSeconds)} — provider error, skipped`);
+      continue;
+    }
     inTok += res.usage.input;
     outTok += res.usage.output;
     if (res.kind === "rejected") {

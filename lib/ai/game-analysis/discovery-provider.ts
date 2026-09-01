@@ -63,7 +63,7 @@ export async function classifyLiveGame(
   frames: FrameProbe[],
 ): Promise<{ verdicts: LiveFrameVerdict[]; usage: { input: number; output: number }; model: string }> {
   assertAiConfigured();
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: 60_000, maxRetries: 1 });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: 60_000, maxRetries: 2 });
   const used = model();
 
   const content: OpenAI.Responses.ResponseInputContent[] = [

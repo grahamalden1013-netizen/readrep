@@ -148,7 +148,7 @@ export async function analyzePossession(
     ),
   ];
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: PROVIDER_TIMEOUT_MS, maxRetries: 1 });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!.trim(), timeout: PROVIDER_TIMEOUT_MS, maxRetries: 3 });
   let response: OpenAI.Responses.Response;
   try {
     response = await client.responses.create({

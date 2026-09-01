@@ -232,14 +232,26 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
     n += 1, idx += 1
   ) {
     const window = windows[idx];
-    const result = await analyzePossession(
-      job.playbackId!,
-      window,
-      { jerseyNumber: job.target.jerseyNumber, teamColor: job.target.teamColor, marker: job.target.marker },
-      referenceFrames,
-      profile,
-      refHint,
-    );
+    let result: Awaited<ReturnType<typeof analyzePossession>>;
+    try {
+      result = await analyzePossession(
+        job.playbackId!,
+        window,
+        { jerseyNumber: job.target.jerseyNumber, teamColor: job.target.teamColor, marker: job.target.marker },
+        referenceFrames,
+        profile,
+        refHint,
+      );
+    } catch (cause) {
+      // A transient provider failure on one window must not kill a 20-call job.
+      // Record it and move on; the run still produces a queue from the rest.
+      const err = toAiError(cause);
+      reasoningCalls += 1;
+      analyzed += 1;
+      rejections.push({ window, reason: "provider-error", detail: err.code });
+      await gameAnalysisJobs.heartbeat(job.id);
+      continue;
+    }
     reasoningCalls += 1;
     analyzed += 1;
     usageIn += result.usage.input;
