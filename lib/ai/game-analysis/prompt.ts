@@ -5,8 +5,12 @@ export { CANDIDATE_PROMPT_VERSION };
 
 export type PossessionPromptInput = {
   target: { jerseyNumber: string; teamColor: string; marker: string | null };
-  /** Coach-confirmed reference frames precede the possession frames. */
+  /** Coach-confirmed reference images (crops + their frames) precede the possession frames. */
   referenceFrameCount: number;
+  /** Short appearance cues the coach noted while confirming the player. */
+  referenceCues: string[];
+  /** True when the coach could read the jersey number on at least one reference. */
+  referenceNumberConfirmed: boolean;
   window: { startSeconds: number; endSeconds: number };
   /** Chronological, one per possession image, seconds into the game. */
   frameTimestampsSeconds: number[];
@@ -42,9 +46,9 @@ export function buildPossessionPrompt(input: PossessionPromptInput): {
 } {
   const system = [
     "You are a cautious basketball film assistant inside NextRep. You are given ONE possession-length window from ONE real uploaded game and must decide whether it contains a coachable decision by a specific target player.",
-    "The FIRST images are coach-confirmed reference frames of the target player. The REMAINING images are the possession, in strict chronological order.",
+    "The FIRST images are coach-confirmed references for the target player: tight CROPS the coach clicked on, followed by the full frames those crops came from and frames just before/after them. The REMAINING images are the possession, in strict chronological order.",
     "",
-    "Step 1 — identify the target player in the possession frames. Use, in combination: team colour, jersey number when legible, the reference frames, visual continuity across adjacent frames, court location, and appearance cues (sleeves, shoes, build) when given. The coach's metadata is NOT proof the player is on screen. If you cannot confidently identify the same player at the decision point, set targetVisible=false and targetIdentificationConfidence low, and return nulls for every rep field. NEVER attribute an observation from a different player to the target.",
+    "Step 1 — identify the target player in the possession frames. Learn the player from the reference crops: team colour, build, hair, sleeves/socks/shoes, and number. Then follow that SAME player through the possession using visual continuity across adjacent frames and court position — do NOT rely on the jersey number alone, because it is often turned away or hidden. Use the number only as confirmation when it is legible. The coach's text metadata is NOT proof the player is on screen. If you cannot confidently track the same player to the decision point, set targetVisible=false and targetIdentificationConfidence low, and return nulls for every rep field. NEVER attribute an observation from a different player to the target.",
     "",
     "Step 2 — decide whether the target player is MEANINGFULLY INVOLVED and faces a real CHOICE. Meaningful involvement includes (offense) " +
       OFFENSE.join(", ") +
@@ -71,10 +75,19 @@ export function buildPossessionPrompt(input: PossessionPromptInput): {
       ? input.coachPreferences.map((p) => `  - [${p.questionId}] ${p.prompt} -> ${p.label}`).join("\n")
       : "  (none apply — use neutral basketball principles)";
 
+  const cueLine =
+    input.referenceCues.length > 0
+      ? `Coach appearance cues: ${input.referenceCues.join("; ")}.`
+      : "Coach gave no extra appearance cues — rely on the reference crops.";
+
   const userIntro = [
     `TARGET (from the game record, not proof of visibility): ${input.target.teamColor} #${input.target.jerseyNumber}` +
       (input.target.marker ? ` — ${input.target.marker}` : ""),
-    `Reference frames: the first ${input.referenceFrameCount} image(s) are the coach-confirmed target player.`,
+    `Reference images: the first ${input.referenceFrameCount} image(s) are coach-confirmed views of the target player (crops the coach clicked, then their source frames and neighbours).`,
+    input.referenceNumberConfirmed
+      ? "The coach confirmed the jersey number was readable on at least one reference."
+      : "The coach could NOT read the jersey number on any reference — identify by appearance and continuity, and keep identification confidence modest unless the number is clearly legible in this window.",
+    cueLine,
     "",
     `POSSESSION WINDOW: ${input.window.startSeconds.toFixed(1)}s to ${input.window.endSeconds.toFixed(
       1,

@@ -86,6 +86,7 @@ export async function analyzePossession(
   target: Target,
   referenceFrames: ReferenceFrame[],
   profile: CoachingProfile | null,
+  referenceHint?: { cues: string[]; anyNumberVisible: boolean },
 ): Promise<AnalyzedPossession> {
   assertAiConfigured();
   const model = reasoningModel();
@@ -130,6 +131,8 @@ export async function analyzePossession(
   const prompt = buildPossessionPrompt({
     target,
     referenceFrameCount: referenceFrames.length,
+    referenceCues: referenceHint?.cues ?? [],
+    referenceNumberConfirmed: referenceHint?.anyNumberVisible ?? false,
     window,
     frameTimestampsSeconds: frames.map((f) => f.timestampSeconds),
     coachPreferences: prefs,

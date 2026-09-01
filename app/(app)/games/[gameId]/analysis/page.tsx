@@ -4,10 +4,7 @@ import { AnalysisFlow } from "@/components/analysis/analysis-flow";
 import { PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
-import {
-  getLatestGameAnalysisForGame,
-  getPlayerConfirmationFrames,
-} from "@/lib/actions/game-analysis";
+import { getLatestGameAnalysisForGame } from "@/lib/actions/game-analysis";
 import { loadCoachingProfile } from "@/lib/actions/coaching";
 import { isProfileComplete } from "@/lib/coaching/profile";
 import { getGame } from "@/lib/store";
@@ -40,9 +37,8 @@ export default async function AnalysisPage({ params }: PageProps<"/games/[gameId
     );
   }
 
-  const [job, framesResult, profile] = await Promise.all([
+  const [job, profile] = await Promise.all([
     getLatestGameAnalysisForGame(gameId),
-    getPlayerConfirmationFrames(gameId),
     loadCoachingProfile(),
   ]);
 
@@ -67,7 +63,6 @@ export default async function AnalysisPage({ params }: PageProps<"/games/[gameId
           teamColor: game.identity.teamColor,
           marker: game.identity.marker ?? null,
         }}
-        frames={framesResult.ok ? framesResult.data.frames : []}
         initialJob={job}
         profileComplete={isProfileComplete(profile)}
       />

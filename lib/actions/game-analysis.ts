@@ -5,6 +5,8 @@ import { z } from "zod";
 import { AiError, toAiError } from "@/lib/ai/errors";
 import { isAiConfigured } from "@/lib/ai/config";
 import { MAX_GAME_SECONDS } from "@/lib/ai/game-analysis/limits";
+import { confirmedReferenceSetSchema } from "@/lib/ai/game-analysis/reference";
+import { scoutTeamColorCandidates } from "@/lib/ai/game-analysis/scout";
 import { runAnalysisTick } from "@/lib/ai/game-analysis/worker";
 import { getCoachingProfile } from "@/lib/db/coaching-profile";
 import { COACHING_PROFILE_VERSION, isProfileComplete } from "@/lib/coaching/profile";
@@ -19,6 +21,13 @@ const MUX_IMAGE_HOST = "https://image.mux.com";
 function thumbUrl(playbackId: string, timeSeconds: number, width = 640): string {
   const t = Math.max(0, Math.round(timeSeconds * 10) / 10);
   return `${MUX_IMAGE_HOST}/${encodeURIComponent(playbackId)}/thumbnail.webp?time=${t}&width=${width}&fit_mode=preserve`;
+}
+
+/** Public-playback animated preview (looping 3-5s). No credentials, no signing. */
+function previewUrl(playbackId: string, startSeconds: number, endSeconds: number, width = 640): string {
+  const s = Math.max(0, Math.round(startSeconds * 10) / 10);
+  const e = Math.max(s + 1, Math.round(endSeconds * 10) / 10);
+  return `${MUX_IMAGE_HOST}/${encodeURIComponent(playbackId)}/animated.webp?start=${s}&end=${e}&width=${width}&fps=15`;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,34 +81,68 @@ function toView(job: GameAnalysisJob): GameAnalysisView {
 }
 
 // ---------------------------------------------------------------------------
-// Player confirmation frames — a spread of stills across the game so the coach
-// can eyeball "is this white #15?" before we spend anything.
+// Scout for the player before analysis. Scans the whole game for live basketball
+// where the target team colour is visible, and returns candidate moments as a
+// preview clip + a still to click on. Never asserts identity.
 // ---------------------------------------------------------------------------
-export async function getPlayerConfirmationFrames(
+export type PlayerScoutCandidate = {
+  id: string;
+  timestampSeconds: number;
+  /** Looping 3-5s preview around the moment. */
+  previewUrl: string;
+  /** High-res still for the coach to click the player on. */
+  stillUrl: string;
+  /** Width the still is served at, so the client can map click -> normalized point. */
+  stillWidth: number;
+};
+
+export async function scoutPlayerCandidates(
   gameId: string,
-): Promise<ActionResult<{ frames: { timestampSeconds: number; url: string }[] }>> {
+): Promise<ActionResult<{ candidates: PlayerScoutCandidate[] }>> {
   return withAuthedAction(async () => {
     await requireOwnerWhenSupabase();
     const id = z.string().min(1).max(64).safeParse(gameId);
     if (!id.success) return { ok: false, error: "That game could not be found." };
 
-    const game = await getGame(id.data);
-    const asset = game?.videoAsset;
-    if (!game || !asset || asset.provider !== "mux" || asset.status !== "ready" || !asset.playbackId) {
-      return { ok: false, error: "This game's video is not ready yet." };
-    }
-    const duration = asset.durationSeconds ?? 0;
-    if (duration < 30) return { ok: false, error: "This video is too short to analyse." };
+    try {
+      if (!isAiConfigured()) {
+        return { ok: false, error: "Analysis is not configured on this server." };
+      }
+      const game = await getGame(id.data);
+      const asset = game?.videoAsset;
+      if (!game || !asset || asset.provider !== "mux" || asset.status !== "ready" || !asset.playbackId) {
+        return { ok: false, error: "This game's video is not ready yet." };
+      }
+      const duration = asset.durationSeconds ?? 0;
+      if (duration < 30) return { ok: false, error: "This video is too short to analyse." };
 
-    // Six frames evenly spread, avoiding the very start / end.
-    const count = 6;
-    const lo = Math.min(60, duration * 0.1);
-    const hi = duration - lo;
-    const frames = Array.from({ length: count }, (_, i) => {
-      const t = Math.round(lo + ((hi - lo) * i) / (count - 1));
-      return { timestampSeconds: t, url: thumbUrl(asset.playbackId!, t, 640) };
-    });
-    return { ok: true, data: { frames } };
+      const scout = await scoutTeamColorCandidates(
+        asset.playbackId,
+        duration,
+        game.identity.teamColor,
+        game.identity.jerseyNumber,
+      );
+
+      const STILL_WIDTH = 960;
+      const candidates: PlayerScoutCandidate[] = scout.candidates.map((c) => ({
+        id: `t${Math.round(c.timestampSeconds)}`,
+        timestampSeconds: c.timestampSeconds,
+        previewUrl: previewUrl(asset.playbackId!, c.previewStartSeconds, c.previewEndSeconds, 640),
+        stillUrl: thumbUrl(asset.playbackId!, c.timestampSeconds, STILL_WIDTH),
+        stillWidth: STILL_WIDTH,
+      }));
+
+      if (candidates.length === 0) {
+        return {
+          ok: false,
+          error: `We couldn't find clear footage of ${game.identity.teamColor} #${game.identity.jerseyNumber} in this game. Try clearer film.`,
+        };
+      }
+      return { ok: true, data: { candidates } };
+    } catch (cause) {
+      const err = cause instanceof AiError ? cause : toAiError(cause);
+      return { ok: false, error: err.toUserMessage() };
+    }
   });
 }
 
@@ -112,8 +155,8 @@ const startSchema = z.object({
   jerseyNumber: z.string().trim().min(1).max(3),
   teamColor: z.string().trim().min(2).max(24),
   marker: z.string().trim().max(80).optional(),
-  /** Timestamps of frames the coach confirmed show the target player. */
-  confirmedFrameSeconds: z.array(z.number().nonnegative()).min(1).max(6),
+  /** 2-3 coach-confirmed sightings, at least one with the number readable. */
+  confirmedReferences: confirmedReferenceSetSchema,
 });
 
 export type StartGameAnalysisInput = z.input<typeof startSchema>;
@@ -123,7 +166,16 @@ export async function startGameAnalysis(
 ): Promise<ActionResult<GameAnalysisView>> {
   return withAuthedAction(async () => {
     const parsed = startSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "Check the player details and try again." };
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]?.message;
+      return {
+        ok: false,
+        error:
+          first && /jersey number|reference/i.test(first)
+            ? first
+            : "Confirm your player on 2–3 clips before analysing.",
+      };
+    }
     const data = parsed.data;
 
     try {
@@ -168,9 +220,9 @@ export async function startGameAnalysis(
             teamColor: data.teamColor.toLowerCase(),
             marker: data.marker?.trim() || null,
           },
-          targetReference: data.confirmedFrameSeconds.map((s) => ({
-            timestampSeconds: s,
-            confirmation: "coach-confirmed",
+          targetReference: data.confirmedReferences.map((r) => ({
+            ...r,
+            jerseyColor: r.jerseyColor.toLowerCase(),
           })),
           coachProfileVersion: isProfileComplete(profile) ? COACHING_PROFILE_VERSION : null,
         });

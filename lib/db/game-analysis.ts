@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseEnv } from "@/lib/env";
 import { createClient, requireUserId } from "@/lib/supabase/server";
+import type { ConfirmedReference } from "@/lib/ai/game-analysis/reference";
 
 export type GameJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type GameJobStage =
@@ -22,7 +23,7 @@ export type GameAnalysisJob = {
   videoAssetId: string | null;
   playbackId: string | null;
   target: { jerseyNumber: string; teamColor: string; marker: string | null };
-  targetReference: { timestampSeconds: number; confirmation: string }[];
+  targetReference: ConfirmedReference[];
   status: GameJobStatus;
   stage: GameJobStage;
   progressNote: string | null;
@@ -112,7 +113,7 @@ export const gameAnalysisJobs = {
     playbackId: string;
     durationSeconds: number | null;
     target: { jerseyNumber: string; teamColor: string; marker: string | null };
-    targetReference: { timestampSeconds: number; confirmation: string }[];
+    targetReference: ConfirmedReference[];
     coachProfileVersion: number | null;
   }): Promise<GameAnalysisJob> {
     const c = await client();

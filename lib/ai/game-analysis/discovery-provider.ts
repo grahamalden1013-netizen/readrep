@@ -1,6 +1,6 @@
 import "server-only";
 import OpenAI from "openai";
-import { AiError, toAiError } from "@/lib/ai/errors";
+import { toAiError } from "@/lib/ai/errors";
 import { assertAiConfigured } from "@/lib/ai/config";
 import { DEFAULT_DISCOVERY_MODEL } from "./limits";
 
@@ -85,8 +85,11 @@ export async function classifyLiveGame(
   try {
     response = await client.responses.create({
       model: used,
+      // Flat per-frame labelling — the small models otherwise spend the entire
+      // output budget on reasoning tokens and return an empty string.
+      reasoning: { effort: "minimal" },
       input: [{ role: "user", content }],
-      max_output_tokens: 1_500,
+      max_output_tokens: 4_000,
       text: {
         format: {
           type: "json_schema",
@@ -100,13 +103,15 @@ export async function classifyLiveGame(
     throw toAiError(cause);
   }
 
+  // A weak batch is treated as "unclear" rather than aborting the whole sweep.
   const text = response.output_text?.trim();
-  if (!text) throw new AiError("invalid-output", "The discovery model returned nothing.");
-  let parsed: { frames?: { index: number; liveGame: boolean; kind: string }[] };
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new AiError("invalid-output", "The discovery model returned invalid JSON.");
+  let parsed: { frames?: { index: number; liveGame: boolean; kind: string }[] } = {};
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = {};
+    }
   }
 
   const byIndex = new Map((parsed.frames ?? []).map((v) => [v.index, v]));

@@ -13,11 +13,46 @@ the limits, and which coaching-profile answers influence which decisions.
 | --- | --- | --- |
 | Coaching profile (once) | `/settings` | ~15 enum questions, offense + defense. Stored per coach, reused for every game, never re-asked. |
 | Upload a game | `/games/new` → `/games/[id]/processing` | Whole game to Mux. Nothing re-encoded locally. |
-| Select + confirm a player | `/games/[id]/analysis` | Jersey + team colour + optional marker, then tap the sample frames where that player is visible. Those timestamps become coach-confirmed reference frames on the job. |
+| Confirm a player | `/games/[id]/analysis` | See "Player confirmation" below — a scan for real sightings, a click on the player in each, and Yes / No / Not clear. Produces 2–3 crop-backed references. |
 | Analyze game | `/games/[id]/analysis` | Creates one durable job. Calm honest stages. Safe to leave the page. |
 | Review the queue | `/games/[id]/review` | One candidate at a time: clip → pause at the decision → draft question + reveal → Approve / Edit / Reject. "Why this moment?" is collapsed. |
 | Player session | `/sessions/[id]` | Approved candidates are published as reps and the player gets the normal calm decision session. |
 | Manual fallback | `/games/[id]/advanced` | The clip studio, kept available. Never the default post-upload destination. |
+
+## Player confirmation (`scout.ts` + `components/analysis/player-confirm.tsx`)
+
+Analysis will not start until the coach has confirmed the player on real footage.
+The page shows nothing but "Is this your player?" — no models, prompts, stages,
+or confidence numbers.
+
+1. **Scan** (`scoutTeamColorCandidates`). A coarse grid across the game (edges
+   trimmed by `SCOUT_EDGE_TRIM_SECONDS` so the intro/wrap-up never appears).
+   `gpt-5-nano`, `reasoning: minimal`, low-res batches: which frames are live
+   basketball with a player in the target colour. Studio, commercials, replays,
+   timeouts, bench and dead-ball frames are dropped. Nearby sightings cluster.
+2. **Verify** (`verifyBatch`). The shortlisted clusters — and only those — go to
+   `gpt-5-mini` at high detail on ~900px stills: is a target-colour player really
+   present and *prominent* (not background), and does a number read? Clusters
+   that fail are discarded. This is what makes a candidate "team colour visible",
+   not a nano guess. In a real 40-min run this cut 60 nano hits to 18.
+3. **Confirm.** Each surviving moment is shown as a looping 3–5s preview
+   (`animated.webp`) plus a still. The coach **clicks the player**; the browser
+   crops a box around the click off the CORS-open Mux image and stores the crop,
+   the normalized point + box, the timestamp, the jersey colour, and whether the
+   number was readable there — then answers **Yes, I can read #N / Yes, number
+   not visible / No / Not clear**.
+4. **Gate** (`confirmedReferenceSetSchema`). "Analyze game" unlocks only with
+   `MIN_CONFIRMED_REFERENCES`–`MAX_CONFIRMED_REFERENCES` confirmations **and at
+   least one where the number was readable** — the app never proceeds on an
+   identity the jersey number never visibly supported.
+5. **Follow.** The worker feeds the analyzer each crop plus its source frame and
+   ~±2s neighbours as references, and tells it to learn the player's colour,
+   build, hair, sleeves and number from them and track that same player through
+   visual continuity — *not* the number alone, which is often turned away.
+
+> The scan currently runs inside the `scoutPlayerCandidates` server action
+> (~2–3 min). For production it should become a durable job like the analysis
+> itself; the function is already pure and side-effect free.
 
 ## Pipeline (`lib/ai/game-analysis/`)
 

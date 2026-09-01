@@ -17,6 +17,10 @@ import type { CandidateDraft } from "@/lib/ai/game-analysis/possession";
 import { possessionResultSchema } from "@/lib/ai/game-analysis/schema";
 import { buildPossessionPrompt } from "@/lib/ai/game-analysis/prompt";
 import {
+  confirmedReferenceSchema,
+  confirmedReferenceSetSchema,
+} from "@/lib/ai/game-analysis/reference";
+import {
   COACHING_QUESTIONS,
   isProfileComplete,
   relevantPreferences,
@@ -240,6 +244,8 @@ test("buildPossessionPrompt lists supplied preferences and window frames", () =>
   const built = buildPossessionPrompt({
     target: { jerseyNumber: "15", teamColor: "white", marker: null },
     referenceFrameCount: 2,
+    referenceCues: ["white leg sleeves"],
+    referenceNumberConfirmed: true,
     window: { startSeconds: 300, endSeconds: 318 },
     frameTimestampsSeconds: [300, 306, 312, 318],
     coachPreferences: [{ questionId: "drive_help", prompt: "On a drive?", label: "Make the simple kick-out" }],
@@ -247,18 +253,62 @@ test("buildPossessionPrompt lists supplied preferences and window frames", () =>
   assert.match(built.userIntro, /white #15/);
   assert.match(built.userIntro, /drive_help/);
   assert.match(built.userIntro, /t=300/);
+  assert.match(built.userIntro, /white leg sleeves/);
   assert.match(built.system, /NEVER attribute an observation from a different player/i);
+  assert.match(built.system, /do NOT rely on the jersey number alone/i);
 });
 
-test("buildPossessionPrompt says so when no preference applies", () => {
+test("buildPossessionPrompt says so when no preference applies and warns when number unconfirmed", () => {
   const built = buildPossessionPrompt({
     target: { jerseyNumber: "15", teamColor: "white", marker: "sleeve" },
     referenceFrameCount: 0,
+    referenceCues: [],
+    referenceNumberConfirmed: false,
     window: { startSeconds: 0, endSeconds: 18 },
     frameTimestampsSeconds: [0, 9, 18],
     coachPreferences: [],
   });
   assert.match(built.userIntro, /none apply/i);
+  assert.match(built.userIntro, /could NOT read the jersey number/i);
+});
+
+// --- confirmed player references --------------------------------
+
+const oneRef = (over: Record<string, unknown> = {}) => ({
+  timestampSeconds: 742,
+  point: { x: 0.5, y: 0.4 },
+  box: { x: 0.43, y: 0.25, w: 0.14, h: 0.3 },
+  crop: "data:image/webp;base64,AAAA",
+  numberVisible: true,
+  jerseyColor: "white",
+  ...over,
+});
+
+test("confirmedReferenceSchema rejects a Mux URL as a crop", () => {
+  const bad = confirmedReferenceSchema.safeParse(
+    oneRef({ crop: "https://image.mux.com/abc/thumbnail.webp?time=742" }),
+  );
+  assert.equal(bad.success, false);
+});
+
+test("confirmedReferenceSetSchema needs 2+ references", () => {
+  assert.equal(confirmedReferenceSetSchema.safeParse([oneRef()]).success, false);
+  assert.equal(confirmedReferenceSetSchema.safeParse([oneRef(), oneRef({ timestampSeconds: 900 })]).success, true);
+});
+
+test("confirmedReferenceSetSchema needs at least one with the number visible", () => {
+  const noNumber = [
+    oneRef({ numberVisible: false }),
+    oneRef({ timestampSeconds: 900, numberVisible: false }),
+  ];
+  const parsed = confirmedReferenceSetSchema.safeParse(noNumber);
+  assert.equal(parsed.success, false);
+  assert.match(parsed.error?.issues[0]?.message ?? "", /jersey number/i);
+});
+
+test("confirmedReferenceSetSchema caps at 3 references", () => {
+  const four = [oneRef(), oneRef({ timestampSeconds: 2 }), oneRef({ timestampSeconds: 3 }), oneRef({ timestampSeconds: 4 })];
+  assert.equal(confirmedReferenceSetSchema.safeParse(four).success, false);
 });
 
 // --- coaching profile relevance ----------------------------------

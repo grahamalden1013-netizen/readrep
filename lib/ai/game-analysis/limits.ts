@@ -12,9 +12,9 @@ export const GAME_EDGE_TRIM_SECONDS = 8;
 /** One probe frame every N seconds across the game. */
 export const DISCOVERY_SAMPLE_INTERVAL_SECONDS = 12;
 /** Frames per cheap-model call. */
-export const DISCOVERY_BATCH_SIZE = 12;
+export const DISCOVERY_BATCH_SIZE = 8;
 /** Never exceed this many cheap calls for one game. */
-export const MAX_DISCOVERY_CALLS = 40;
+export const MAX_DISCOVERY_CALLS = 60;
 /** Probe frame width — small; we only need "is this live basketball". */
 export const DISCOVERY_FRAME_WIDTH = 480;
 /** Bridge a single dead sample between two live ones. */
@@ -31,6 +31,31 @@ export const MAX_REASONING_CALLS = 20;
 /** Frames sent per possession to the reasoning model. */
 export const POSSESSION_FRAMES = 14;
 export const POSSESSION_FRAME_WIDTH = 852;
+
+// --- Player scout (runs before "Analyze game" is available) -----------
+/** Skip the broadcast intro / wrap-up entirely — never a clean player sighting. */
+export const SCOUT_EDGE_TRIM_SECONDS = 45;
+/** Coarse probe grid for the pre-analysis "find my player" scan. */
+export const SCOUT_SAMPLE_INTERVAL_SECONDS = 18;
+export const SCOUT_BATCH_SIZE = 8;
+/** Second, stricter pass that confirms the colour is really visible. */
+export const SCOUT_VERIFY_MODEL = "gpt-5-mini";
+export const SCOUT_VERIFY_FRAME_WIDTH = 900;
+export const SCOUT_VERIFY_BATCH_SIZE = 10;
+export const SCOUT_VERIFY_MAX_CALLS = 3;
+/** Hard cap on cheap classifier calls for one scout run. */
+export const SCOUT_MAX_CALLS = 26;
+export const SCOUT_FRAME_WIDTH = 512;
+/** Merge candidate sightings closer than this into one. */
+export const SCOUT_CLUSTER_GAP_SECONDS = 10;
+/** How many candidate moments to offer the coach. */
+export const SCOUT_MAX_CANDIDATES = 8;
+/** Preview clip padding around a candidate timestamp. */
+export const SCOUT_PREVIEW_LEAD_SECONDS = 2;
+export const SCOUT_PREVIEW_TRAIL_SECONDS = 3;
+/** Confirmed references required before analysis can start. */
+export const MIN_CONFIRMED_REFERENCES = 2;
+export const MAX_CONFIRMED_REFERENCES = 3;
 
 // --- Stage F: output --------------------------------------------------
 export const TARGET_CANDIDATE_MIN = 5;

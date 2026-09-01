@@ -224,6 +224,7 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
 
   const profile = await getCoachingProfile().catch(() => null);
   const referenceFrames = await loadReferenceFrames(job);
+  const refHint = referenceHint(job);
 
   for (
     let n = 0;
@@ -237,6 +238,7 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
       { jerseyNumber: job.target.jerseyNumber, teamColor: job.target.teamColor, marker: job.target.marker },
       referenceFrames,
       profile,
+      refHint,
     );
     reasoningCalls += 1;
     analyzed += 1;
@@ -353,13 +355,37 @@ async function stepRank(job: GameAnalysisJob, cursor: Cursor): Promise<TickResul
 
 // --- helpers --------------------------------------------------------
 
+/**
+ * Build the reference image set the analyzer follows the player with: each
+ * coach-made crop, plus the full frame it came from and frames ~2s before/after
+ * for continuity — so the player can be tracked when the number is turned away.
+ * Capped so token cost stays bounded.
+ */
 async function loadReferenceFrames(job: GameAnalysisJob): Promise<ReferenceFrame[]> {
   const out: ReferenceFrame[] = [];
-  for (const ref of job.targetReference.slice(0, 3)) {
-    const f = await fetchMuxFrame(job.playbackId!, ref.timestampSeconds, POSSESSION_FRAME_WIDTH, 7_000);
-    if (f) out.push({ timestampSeconds: ref.timestampSeconds, dataUrl: f.dataUrl });
+  const refs = job.targetReference.slice(0, 3);
+  for (const ref of refs) {
+    if (typeof ref.crop === "string" && ref.crop.startsWith("data:image/")) {
+      out.push({ timestampSeconds: ref.timestampSeconds, dataUrl: ref.crop });
+    }
+  }
+  const adjacentOffsets = refs.length <= 2 ? [-2, 0, 2] : [0];
+  for (const ref of refs) {
+    for (const dt of adjacentOffsets) {
+      const t = Math.max(0, ref.timestampSeconds + dt);
+      const f = await fetchMuxFrame(job.playbackId!, t, POSSESSION_FRAME_WIDTH, 7_000);
+      if (f) out.push({ timestampSeconds: t, dataUrl: f.dataUrl });
+      if (out.length >= 10) return out;
+    }
   }
   return out;
+}
+
+function referenceHint(job: GameAnalysisJob): { cues: string[]; anyNumberVisible: boolean } {
+  const cues = job.targetReference
+    .map((r) => r.appearanceCue?.trim())
+    .filter((c): c is string => Boolean(c));
+  return { cues: [...new Set(cues)].slice(0, 4), anyNumberVisible: job.targetReference.some((r) => r.numberVisible) };
 }
 
 function candidateRow(
