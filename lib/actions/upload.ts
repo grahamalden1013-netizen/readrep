@@ -7,6 +7,7 @@ import { playerIdentitySchema, type VideoAsset } from "@/lib/reps/schema";
 import { getVideoConfig, getVideoProvider } from "@/lib/video";
 import { VideoProviderError, isAcceptedVideoName } from "@/lib/video/provider";
 import { syncGameVideo } from "@/lib/video/sync";
+import { requireOwnerWhenSupabase, withAuthedAction } from "./guard";
 import type { ActionResult } from "./result";
 
 const createGameSchema = z.object({
@@ -50,6 +51,12 @@ async function originFromRequest(): Promise<string> {
 export async function startGameUpload(
   input: CreateGameInput,
 ): Promise<ActionResult<StartUploadResult>> {
+  return withAuthedAction(() => startGameUploadInner(input));
+}
+
+async function startGameUploadInner(
+  input: CreateGameInput,
+): Promise<ActionResult<StartUploadResult>> {
   const parsed = createGameSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form and try again." };
@@ -63,9 +70,12 @@ export async function startGameUpload(
   if (availability.kind === "unavailable") {
     return { ok: false, error: availability.reason };
   }
-  if (availability.kind === "supabase" && !availability.signedIn) {
-    return { ok: false, error: "Log in first — uploaded film is stored against your account." };
-  }
+  // Under Supabase the owner is the authenticated user and nothing else. This
+  // throws AuthRequiredError (→ typed { code: "auth-required" }) when the
+  // session is missing or expired, so the browser can prompt a re-login and
+  // retry rather than hang at 0%. The file backend has no accounts, so it is a
+  // no-op there.
+  await requireOwnerWhenSupabase();
 
   const videoConfig = getVideoConfig();
   if (videoConfig.kind === "unavailable") {
@@ -137,49 +147,58 @@ export async function startGameUpload(
 
 /** Marks the upload as started so the processing page can report honestly. */
 export async function markUploadStarted(gameId: string): Promise<ActionResult<null>> {
-  const backend = await getBackend();
-  const game = await backend.getGame(gameId);
-  if (!game?.videoAsset) return { ok: false, error: "That game has no upload in progress." };
+  return withAuthedAction(async () => {
+    await requireOwnerWhenSupabase();
+    const backend = await getBackend();
+    const game = await backend.getGame(gameId);
+    if (!game?.videoAsset) return { ok: false, error: "That game has no upload in progress." };
 
-  await backend.setVideoAsset(gameId, {
-    ...game.videoAsset,
-    status: "uploading",
-    updatedAt: nowIso(),
+    await backend.setVideoAsset(gameId, {
+      ...game.videoAsset,
+      status: "uploading",
+      updatedAt: nowIso(),
+    });
+    return { ok: true, data: null };
   });
-  return { ok: true, data: null };
 }
 
 /** Called when the browser's PUT finishes, before webhooks have caught up. */
 export async function markUploadFinished(gameId: string): Promise<ActionResult<null>> {
-  const backend = await getBackend();
-  const game = await backend.getGame(gameId);
-  if (!game?.videoAsset) return { ok: false, error: "That game has no upload in progress." };
+  return withAuthedAction(async () => {
+    await requireOwnerWhenSupabase();
+    const backend = await getBackend();
+    const game = await backend.getGame(gameId);
+    if (!game?.videoAsset) return { ok: false, error: "That game has no upload in progress." };
 
-  if (game.videoAsset.status === "uploading" || game.videoAsset.status === "awaiting-upload") {
-    await backend.setVideoAsset(gameId, {
-      ...game.videoAsset,
-      status: "processing",
-      updatedAt: nowIso(),
-    });
-  }
-  return { ok: true, data: null };
+    if (game.videoAsset.status === "uploading" || game.videoAsset.status === "awaiting-upload") {
+      await backend.setVideoAsset(gameId, {
+        ...game.videoAsset,
+        status: "processing",
+        updatedAt: nowIso(),
+      });
+    }
+    return { ok: true, data: null };
+  });
 }
 
 export async function cancelGameUpload(gameId: string): Promise<ActionResult<null>> {
-  const backend = await getBackend();
-  const game = await backend.getGame(gameId);
-  if (!game?.videoAsset) return { ok: false, error: "That game has no upload in progress." };
+  return withAuthedAction(async () => {
+    await requireOwnerWhenSupabase();
+    const backend = await getBackend();
+    const game = await backend.getGame(gameId);
+    if (!game?.videoAsset) return { ok: false, error: "That game has no upload in progress." };
 
-  if (game.videoAsset.uploadId) {
-    try {
-      getVideoProvider().cancelUpload(game.videoAsset.uploadId);
-    } catch {
-      // Best effort: the provider expires abandoned uploads on its own.
+    if (game.videoAsset.uploadId) {
+      try {
+        getVideoProvider().cancelUpload(game.videoAsset.uploadId);
+      } catch {
+        // Best effort: the provider expires abandoned uploads on its own.
+      }
     }
-  }
 
-  await backend.deleteGame(gameId);
-  return { ok: true, data: null };
+    await backend.deleteGame(gameId);
+    return { ok: true, data: null };
+  });
 }
 
 export type VideoStatusView = {

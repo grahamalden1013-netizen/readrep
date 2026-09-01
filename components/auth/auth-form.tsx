@@ -8,10 +8,12 @@ export function AuthForm({
   mode,
   action,
   error,
+  redirectTo,
 }: {
   mode: "login" | "signup";
   action: (formData: FormData) => Promise<void>;
   error?: string;
+  redirectTo?: string;
 }) {
   const isLogin = mode === "login";
 
@@ -52,6 +54,7 @@ export function AuthForm({
           ) : null}
 
           <form action={action} className="flex flex-col gap-4">
+            {redirectTo ? <input type="hidden" name="redirectTo" value={redirectTo} /> : null}
             <Field label="Email">
               <input
                 type="email"

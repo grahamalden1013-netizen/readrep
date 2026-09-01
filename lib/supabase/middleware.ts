@@ -8,6 +8,11 @@ import { supabaseEnv } from "@/lib/env";
  */
 const PROTECTED_PREFIXES = ["/account"];
 
+/**
+ * Runs on every request (see `proxy.ts`). This is the one place a refreshed
+ * Supabase session cookie is written back to the browser: Server Components
+ * cannot set cookies, so without this the session would never be renewed.
+ */
 export async function updateSession(request: NextRequest) {
   if (!supabaseEnv) {
     return NextResponse.next({ request });
@@ -30,6 +35,9 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  // Refreshes the session when needed and, via `setAll` above, writes the new
+  // cookie onto `response`. Errors here (e.g. an expired refresh token) leave
+  // `user` null; the downstream page or action decides what to do about that.
   const {
     data: { user },
   } = await supabase.auth.getUser();

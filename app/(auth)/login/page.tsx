@@ -5,12 +5,13 @@ import { login } from "../actions";
 export const metadata: Metadata = { title: "Log in" };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { error } = await searchParams;
+  const { error, redirectTo } = await searchParams;
   return (
     <AuthForm
       mode="login"
       action={login}
       error={typeof error === "string" ? error : undefined}
+      redirectTo={typeof redirectTo === "string" ? redirectTo : undefined}
     />
   );
 }

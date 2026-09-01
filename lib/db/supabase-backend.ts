@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AuthRequiredError } from "@/lib/errors";
 import {
   gameSchema,
   repSchema,
@@ -152,7 +153,10 @@ export class SupabaseContentBackend implements ContentBackend {
 
   private requireOwner(): string {
     if (!this.ownerId) {
-      throw new SupabaseError("This operation", { message: "requires a signed-in user" });
+      // Defence in depth: protected Server Actions resolve the owner from the
+      // session before they get here. If one slips through, fail with the typed
+      // auth error so the client can prompt a re-login, not a generic 500.
+      throw new AuthRequiredError();
     }
     return this.ownerId;
   }

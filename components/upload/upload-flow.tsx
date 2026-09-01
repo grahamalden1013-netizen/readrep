@@ -91,6 +91,7 @@ export function UploadFlow({
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [gameId, setGameId] = useState<string | null>(null);
 
   function acceptFile(candidate: File | undefined) {
@@ -124,39 +125,52 @@ export function UploadFlow({
     setStep(4);
     setUploading(true);
     setError(null);
+    setNeedsLogin(false);
     setProgress(0);
 
-    const started = await startGameUpload({
-      title: title.trim(),
-      opponent: opponent.trim(),
-      playedOn,
-      identity: {
-        jerseyNumber: jerseyNumber.trim(),
-        teamColor,
-        ...(marker.trim() ? { marker: marker.trim() } : {}),
-      },
-      fileName: file.name,
-    });
+    let started;
+    try {
+      started = await startGameUpload({
+        title: title.trim(),
+        opponent: opponent.trim(),
+        playedOn,
+        identity: {
+          jerseyNumber: jerseyNumber.trim(),
+          teamColor,
+          ...(marker.trim() ? { marker: marker.trim() } : {}),
+        },
+        fileName: file.name,
+      });
+    } catch {
+      // A Server Action that threw (network drop, or an unexpected server
+      // fault). Never leave the bar sitting at 0% — surface it and let the
+      // player retry.
+      setUploading(false);
+      setError("Could not reach the server to start the upload. Try again.");
+      return;
+    }
 
     if (!started.ok) {
       setUploading(false);
+      if (started.code === "auth-required") setNeedsLogin(true);
       setError(started.error);
       return;
     }
 
     setGameId(started.data.gameId);
+    const startedData = started.data;
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      await markUploadStarted(started.data.gameId);
-      await putWithProgress(started.data.uploadUrl, file, setProgress, controller.signal);
-      await markUploadFinished(started.data.gameId);
-      router.push(`/games/${started.data.gameId}/processing`);
+      await markUploadStarted(startedData.gameId);
+      await putWithProgress(startedData.uploadUrl, file, setProgress, controller.signal);
+      await markUploadFinished(startedData.gameId);
+      router.push(`/games/${startedData.gameId}/processing`);
     } catch (cause) {
       setUploading(false);
       if (cause instanceof DOMException && cause.name === "AbortError") {
-        await cancelGameUpload(started.data.gameId);
+        await cancelGameUpload(startedData.gameId).catch(() => undefined);
         setGameId(null);
         setStep(3);
         setError("Upload cancelled.");
@@ -394,11 +408,20 @@ export function UploadFlow({
             <div role="alert" className="flex flex-col items-start gap-3">
               <p className="text-sm text-bad">{error}</p>
               <div className="flex gap-3">
-                <Button onClick={() => void upload()}>Retry upload</Button>
+                {needsLogin ? (
+                  <ButtonLink
+                    href={`/login?redirectTo=${encodeURIComponent("/games/new")}`}
+                  >
+                    Log in to upload
+                  </ButtonLink>
+                ) : (
+                  <Button onClick={() => void upload()}>Retry upload</Button>
+                )}
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setError(null);
+                    setNeedsLogin(false);
                     setStep(3);
                   }}
                 >

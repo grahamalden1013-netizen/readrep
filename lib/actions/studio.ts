@@ -6,6 +6,7 @@ import { getBackend } from "@/lib/db";
 import { validateRepDraft } from "@/lib/reps/draft";
 import { difficultySchema, skillCategorySchema, type Rep } from "@/lib/reps/schema";
 import { getVideoDurationMs } from "@/lib/video/playback";
+import { requireOwnerWhenSupabase, withAuthedAction } from "./guard";
 import type { ActionResult } from "./result";
 
 const choiceSchema = z.object({
@@ -47,12 +48,19 @@ function firstIssue(error: z.ZodError): string {
  * duration here, which the schema alone cannot know.
  */
 export async function saveRepDraft(input: RepDraftInput): Promise<ActionResult<{ repId: string }>> {
+  return withAuthedAction(() => saveRepDraftInner(input));
+}
+
+async function saveRepDraftInner(
+  input: RepDraftInput,
+): Promise<ActionResult<{ repId: string }>> {
   const parsed = draftSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: firstIssue(parsed.error) };
   }
   const draft = parsed.data;
 
+  await requireOwnerWhenSupabase();
   const backend = await getBackend();
   const game = await backend.getGame(draft.gameId);
   if (!game) return { ok: false, error: "That game no longer exists." };
@@ -108,16 +116,22 @@ export async function saveRepDraft(input: RepDraftInput): Promise<ActionResult<{
 }
 
 export async function unpublishRep(repId: string): Promise<ActionResult<null>> {
-  const backend = await getBackend();
-  const rep = await backend.getRep(repId);
-  if (!rep) return { ok: false, error: "That rep no longer exists." };
+  return withAuthedAction(async () => {
+    await requireOwnerWhenSupabase();
+    const backend = await getBackend();
+    const rep = await backend.getRep(repId);
+    if (!rep) return { ok: false, error: "That rep no longer exists." };
 
-  await backend.saveRep({ ...rep, status: "draft", publishedAt: null });
-  return { ok: true, data: null };
+    await backend.saveRep({ ...rep, status: "draft", publishedAt: null });
+    return { ok: true, data: null };
+  });
 }
 
 export async function deleteRep(repId: string): Promise<ActionResult<null>> {
-  const backend = await getBackend();
-  await backend.deleteRep(repId);
-  return { ok: true, data: null };
+  return withAuthedAction(async () => {
+    await requireOwnerWhenSupabase();
+    const backend = await getBackend();
+    await backend.deleteRep(repId);
+    return { ok: true, data: null };
+  });
 }
