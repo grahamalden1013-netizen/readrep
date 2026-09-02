@@ -163,39 +163,54 @@ Every entry now has 7.0 s of pre-decision context. The pipeline still needs a
 manual film check for identification accuracy and candidate quality — **not
 accepted on those axes.**
 
-## Strict decision gate (prompt v2) — rescore, 2026-09-01
+## game-analysis-v2 + independent verifier — validation of the nine baseline clips (2026-09-01)
 
-Decision discovery was rebuilt around the strict definition (see
-`docs/full-game-analysis.md`). The nine repaired candidates were **rescored
-without changing their window timestamps** (`scripts/rescore-9.ts`, 9 model
-calls, ~$0.25).
+Two-pass pipeline:
 
-**Survivors: 0 / 9.** Under prompt v2 the model returned `decision: false` for
-every one; the deterministic gate then rejected them:
+1. **Discovery** (`analyzePossession`, prompt `game-analysis-v2`) — temporal
+   frames → the model returns a decision or `decision: false`.
+2. **Deterministic gate** (`gate.ts › evaluatePossessionResult`) — every factual
+   claim must land on a real supplied frame; `plausibleAlternatives` each need a
+   frame timestamp at or before the pause; the committed action and its outcome
+   each need a frame after the pause. An alternative that only asserts "visible
+   evidence" with no locatable frame is dropped.
+3. **Independent verifier** (`verify.ts › verifyDecision`) — a **separate** model
+   call that receives the same frames + the proposed structured decision, is
+   **not told to preserve it**, and answers five yes/no questions from the frames
+   alone. Runs only for proposals that pass discovery + the gate.
+4. **Accept** only when discovery + gate + verifier all pass. Any verifier
+   disagreement → `needs_attention` (never published).
 
-| # | window | v2 outcome |
-| --- | --- | --- |
-| 1 | 67 (21:01) | `no-meaningful-decision` — dead-ball inbounds setup, no live read |
-| 2 | 24 (8:01) | `no-meaningful-decision` — model returned decision:false |
-| 3 | 33 (9:59) | `no-meaningful-decision` |
-| 4 | 27 (8:42) | `no-meaningful-decision` |
-| 5 | 71 (21:55) | `target-not-visible` |
-| 6 | 47 (14:23) | `target-not-confidently-identified` |
-| 7 | 83 (25:57) | `no-meaningful-decision` — routine action |
-| 8 | 35 (10:28) | `no-meaningful-decision` — target not materially involved |
-| 9 | 48 (14:42) | `no-meaningful-decision` |
+Rescored **without changing any window timestamp** (`scripts/rescore-9.ts`, 9
+discovery calls, 0 verifier calls, **+$0.27**):
 
-The nine seeded rows are now `status = rejected` with these reasons; the review
-page shows nothing to review and lists all nine as rejected.
+| win | title | discovery | gate | verifier | final |
+| --- | --- | --- | --- | --- | --- |
+| 67 | Attack the Gap With a Help Read | `decision:false` | `no-meaningful-decision` | not run | **reject** |
+| 24 | High Ball Screen: Roll to the Rim | `decision:false` | `no-meaningful-decision` | not run | **reject** |
+| 33 | Transition attack: finish through the lane | `decision:false` | `no-meaningful-decision` | not run | **reject** |
+| 27 | Weak-Side Rim Rotation | `decision:false` | `no-meaningful-decision` | not run | **reject** |
+| 71 | Attack the Left-Side Closeout | `decision:false` | `target-not-confidently-visible` | not run | **reject** |
+| 47 | Use the Screen, Then Find the Wing | `decision:false` | `no-meaningful-decision` (target not materially involved) | not run | **reject** |
+| 83 | High Screen: Roll Into Space | `decision:false` | `no-meaningful-decision` | not run | **reject** |
+| 35 | Drive Help, Then Kick Out | `decision:false` | `no-meaningful-decision` | not run | **reject** |
+| 48 | Protect the Rim on the Late Drive | `decision:false` | `no-meaningful-decision` | not run | **reject** |
 
-**Regression fixture:** `test/fixtures/decision-21-01-response.json` is the real
-captured v2 model response for window 67. `test/decision-gate-regression.test.ts`
-asserts it parses and is rejected as `no-meaningful-decision` and never yields a
-draft.
+**Accepted 0 / 9. needs_attention 0 / 9. Rejected 9 / 9.** The verifier never
+ran because nothing reached it — discovery itself declined to call any of these a
+decision. No surviving candidate ⇒ no timestamp-grounding table to produce (the
+grounding format is proven by the gate unit tests and would be emitted per
+survivor by `rescore-9.ts`).
 
-This confirms the reviewer's assessment: the v1 candidates were generic-
-positioning false positives. The 130-window game has **not** been re-run under
-v2 yet.
+**1 — 21:01 regression:** `test/fixtures/decision-21-01-response.json` is the
+real captured v2 response for window 67 — `decision: false`,
+`noDecisionReason: "no-meaningful-decision"`, `possessionSummary` describing a
+dead-ball inbounds. `test/decision-gate-regression.test.ts` asserts it parses,
+is rejected as `no-meaningful-decision`, and never yields a draft.
+
+The nine seeded rows are `status = rejected` with these reasons; the review page
+shows nothing to review and lists all nine as rejected with the v2 reason. The
+130-window game has **not** been re-run under v2.
 
 ## Baseline conclusions (do not "fix" before this is agreed)
 

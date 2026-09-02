@@ -56,7 +56,9 @@ export type CandidateReviewView = {
     involvement: string | null;
     possessionSummary: string | null;
     actualAction: string | null;
-    plausibleAlternatives: { action: string; visibleEvidence: string }[];
+    actualActionSeconds: number | null;
+    visibleOutcomeSeconds: number | null;
+    plausibleAlternatives: { action: string; atSeconds?: number; visibleEvidence: string }[];
     whyNotRoutine: string | null;
     whyPauseBeforeCommitment: string | null;
     evidence: { timestampSeconds: number; observation: string }[];
@@ -65,6 +67,7 @@ export type CandidateReviewView = {
     uncertainty: string[];
     playerIdConfidence: number | null;
     decisionConfidence: number | null;
+    verifier: Record<string, unknown> | null;
   };
   review: {
     playerVerdict: "correct" | "wrong" | null;
@@ -102,9 +105,12 @@ function toReviewView(row: CandidateRepRow, jobId: string): CandidateReviewView 
       involvement: row.involvement,
       possessionSummary: row.possessionSummary,
       actualAction: row.actualAction,
+      actualActionSeconds: row.actualActionSeconds,
+      visibleOutcomeSeconds: row.visibleOutcomeSeconds,
       plausibleAlternatives: row.plausibleAlternatives,
       whyNotRoutine: row.whyThisIsNotRoutine,
       whyPauseBeforeCommitment: row.whyThePauseIsBeforeCommitment,
+      verifier: row.verifierVerdict,
       evidence: row.visibleEvidence,
       inferences: row.basketballInferences,
       coachPreferences: row.coachPreferenceBasis,

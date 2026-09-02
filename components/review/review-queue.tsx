@@ -358,16 +358,40 @@ export function ReviewQueue({
                       ) : null}
                       {current.why.plausibleAlternatives.length > 0 ? (
                         <div>
-                          <p className="label-caps mb-1 text-fg-faint">Plausible alternatives &middot; visible evidence</p>
+                          <p className="label-caps mb-1 text-fg-faint">Plausible alternatives &middot; frame evidence</p>
                           <ul className="flex flex-col gap-1.5">
                             {current.why.plausibleAlternatives.map((a, i) => (
                               <li key={i}>
+                                {typeof a.atSeconds === "number" ? (
+                                  <span className="timecode mr-2 text-fg-faint">{clock(a.atSeconds)}</span>
+                                ) : null}
                                 <span className="font-medium text-fg">{a.action}</span>
                                 <span className="text-fg-faint"> — {a.visibleEvidence}</span>
                               </li>
                             ))}
                           </ul>
                         </div>
+                      ) : null}
+                      {current.why.actualActionSeconds != null || current.why.visibleOutcomeSeconds != null ? (
+                        <p className="text-fg-faint">
+                          {current.why.actualActionSeconds != null
+                            ? `action visible @ ${clock(current.why.actualActionSeconds)}`
+                            : ""}
+                          {current.why.actualActionSeconds != null && current.why.visibleOutcomeSeconds != null
+                            ? " · "
+                            : ""}
+                          {current.why.visibleOutcomeSeconds != null
+                            ? `outcome visible @ ${clock(current.why.visibleOutcomeSeconds)}`
+                            : ""}
+                        </p>
+                      ) : null}
+                      {current.why.verifier ? (
+                        <p>
+                          <span className="label-caps mr-2 text-fg-faint">Independent verifier</span>
+                          {(["correctTarget", "meaningfulDecision", "twoAlternativesVisible", "pauseBeforeCommitment", "outcomeVisible"] as const)
+                            .map((k) => `${k}: ${current.why.verifier?.[k] === true ? "yes" : "no"}`)
+                            .join(" · ")}
+                        </p>
                       ) : null}
                       {current.why.whyNotRoutine ? (
                         <p>

@@ -2,7 +2,7 @@ import "server-only";
 import { toAiError } from "@/lib/ai/errors";
 import type { CoachingProfile } from "@/lib/coaching/profile";
 import { MAX_WINDOW_ATTEMPTS } from "./limits";
-import { analyzePossession, type AnalyzedPossession, type ReferenceFrame, type Target } from "./possession";
+import { analyzePossessionVerified, type AnalyzedPossession, type ReferenceFrame, type Target } from "./possession";
 import type { PossessionWindow } from "./segments";
 import { classifyOutcome, type WindowLedgerEntry } from "./coverage-outcomes";
 
@@ -38,7 +38,7 @@ export async function analyzeWindowToTerminal(
   while (attempts < MAX_WINDOW_ATTEMPTS) {
     attempts += 1;
     try {
-      const analyzed = await analyzePossession(playbackId, window, target, referenceFrames, profile, referenceHint);
+      const analyzed = await analyzePossessionVerified(playbackId, window, target, referenceFrames, profile, referenceHint);
       const { outcome, reason } = classifyOutcome(analyzed);
       const draft = analyzed.kind === "candidate" || analyzed.kind === "flagged" ? analyzed.draft : null;
       return {

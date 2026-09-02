@@ -148,10 +148,12 @@ function draft(decisionSeconds: number, over: Partial<CandidateDraft> = {}): Can
     ],
     possessionSummary: "White #15 drives middle out of a ball screen.",
     actualAction: "drive",
+    actualActionSeconds: decisionSeconds + 1,
     visibleOutcome: "Blocked at the rim",
+    visibleOutcomeSeconds: decisionSeconds + 3,
     plausibleAlternatives: [
-      { action: "finish", visibleEvidence: "lane briefly open" },
-      { action: "kick to corner", visibleEvidence: "low man has left the corner" },
+      { action: "finish", atSeconds: decisionSeconds - 1, visibleEvidence: "lane briefly open" },
+      { action: "kick to corner", atSeconds: decisionSeconds - 1, visibleEvidence: "low man has left the corner" },
     ],
     whyThisIsNotRoutine: "The low man fully commits, opening a specific kick-out.",
     whyThePauseIsBeforeCommitment: "Frame is one gather before the shot goes up.",
@@ -242,10 +244,16 @@ function modelResult(over: Record<string, unknown> = {}) {
     decisionOffsetSeconds: 6,
     decisionConfidence: 0.7,
     actualAction: "drive",
+    actualActionOffsetSeconds: 7,
     visibleOutcome: "Drive reaches the rim; low man rotates over and the shot is blocked.",
+    visibleOutcomeOffsetSeconds: 9,
     plausibleAlternatives: [
-      { action: "finish at the rim", visibleEvidence: "lane is briefly open at t=305" },
-      { action: "kick to the left corner", visibleEvidence: "the low man has left the corner shooter at t=306" },
+      { action: "finish at the rim", atSecondsFromWindowStart: 5, visibleEvidence: "lane is briefly open at t=305" },
+      {
+        action: "kick to the left corner",
+        atSecondsFromWindowStart: 6,
+        visibleEvidence: "the low man has left the corner shooter at t=306",
+      },
     ],
     whyThisIsNotRoutine: "The low man fully commits, creating a specific advantage that must be read.",
     whyThePauseIsBeforeCommitment: "The pause is one gather before #15 leaves his feet.",
@@ -299,75 +307,86 @@ test("possessionResultSchema rejects a confidence above 1", () => {
 // --- the decision gate ------------------------------------------
 
 const WIN = { startSeconds: 300, endSeconds: 318 };
+// frame grid the model was "shown" — spans the window
+const FRAMES = [300, 302, 304, 305, 306, 307, 308, 309, 311, 313, 315, 317];
 
 test("gate rejects a decision:false verdict as no-meaningful-decision", () => {
   const r = possessionResultSchema.parse(
     modelResult({ decision: false, noDecisionReason: "routine catch", decisionOffsetSeconds: null }),
   );
-  const g = evaluatePossessionResult(r, WIN);
+  const g = evaluatePossessionResult(r, WIN, FRAMES);
   assert.equal(g.kind, "rejected");
   assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
 });
 
-test("gate rejects when fewer than two alternatives have visible evidence", () => {
+test("gate rejects when fewer than two alternatives are grounded on a frame before the pause", () => {
   const r = possessionResultSchema.parse(
-    modelResult({ plausibleAlternatives: [{ action: "finish", visibleEvidence: "lane open" }] }),
+    modelResult({
+      plausibleAlternatives: [{ action: "finish", atSecondsFromWindowStart: 5, visibleEvidence: "lane open" }],
+    }),
   );
-  const g = evaluatePossessionResult(r, WIN);
+  const g = evaluatePossessionResult(r, WIN, FRAMES);
   assert.equal(g.kind, "rejected");
   assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
 });
 
-test("schema requires visible evidence text for every alternative", () => {
-  const parsed = possessionResultSchema.safeParse(
+test("gate rejects alternatives whose timestamps land on no supplied frame", () => {
+  // grid has frames for the target evidence (303, 306) and the pause (~312),
+  // but nothing near the claimed alternative times (308, 308.5).
+  const grid = [300, 303, 306, 313, 317];
+  const r = possessionResultSchema.parse(
     modelResult({
+      decisionOffsetSeconds: 12,
+      actualActionOffsetSeconds: 13.5,
+      visibleOutcomeOffsetSeconds: 15,
       plausibleAlternatives: [
-        { action: "finish", visibleEvidence: "lane open" },
-        { action: "kick", visibleEvidence: "  " },
+        { action: "finish", atSecondsFromWindowStart: 8, visibleEvidence: "claimed but not on a shown frame" },
+        { action: "kick", atSecondsFromWindowStart: 8.5, visibleEvidence: "claimed but not on a shown frame" },
       ],
     }),
   );
-  assert.equal(parsed.success, false);
-});
-
-test("gate rejects when only one alternative survives the evidence check", () => {
-  // schema-valid, but the gate needs two alternatives with non-empty evidence
-  const r = possessionResultSchema.parse(
-    modelResult({ plausibleAlternatives: [{ action: "finish at the rim", visibleEvidence: "lane is open" }] }),
-  );
-  const g = evaluatePossessionResult(r, WIN);
+  const g = evaluatePossessionResult(r, WIN, grid);
   assert.equal(g.kind, "rejected");
   assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
+});
+
+test("gate rejects when the committed action is not shown after the pause", () => {
+  const r = possessionResultSchema.parse(modelResult({ actualActionOffsetSeconds: 6 })); // == decision, not after
+  const g = evaluatePossessionResult(r, WIN, FRAMES);
+  assert.equal(g.kind, "rejected");
+  assert.equal((g as { reason: string }).reason, "outcome-not-visible");
 });
 
 test("gate rejects a pause on the first frames as insufficient-pre-decision-context", () => {
   const r = possessionResultSchema.parse(modelResult({ decisionOffsetSeconds: 0.5 }));
-  const g = evaluatePossessionResult(r, WIN);
+  const g = evaluatePossessionResult(r, WIN, FRAMES);
   assert.equal(g.kind, "rejected");
   assert.equal((g as { reason: string }).reason, "insufficient-pre-decision-context");
 });
 
 test("gate rejects when the target is not materially involved", () => {
   const r = possessionResultSchema.parse(modelResult({ targetInvolvement: "not-involved" }));
-  const g = evaluatePossessionResult(r, WIN);
+  const g = evaluatePossessionResult(r, WIN, FRAMES);
   assert.equal(g.kind, "rejected");
   assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
 });
 
 test("gate rejects when the model does not justify why the moment is not routine", () => {
   const r = possessionResultSchema.parse(modelResult({ whyThisIsNotRoutine: "" }));
-  const g = evaluatePossessionResult(r, WIN);
+  const g = evaluatePossessionResult(r, WIN, FRAMES);
   assert.equal(g.kind, "rejected");
 });
 
-test("gate accepts a fully supported decision", () => {
-  const g = evaluatePossessionResult(possessionResultSchema.parse(modelResult()), WIN);
+test("gate accepts a fully supported, frame-grounded decision", () => {
+  const g = evaluatePossessionResult(possessionResultSchema.parse(modelResult()), WIN, FRAMES);
   assert.notEqual(g.kind, "rejected");
   if (g.kind === "rejected") return;
   assert.equal(g.draft.answerChoices.map((c) => c.id).join(""), "AB");
   assert.equal(g.draft.bestReadChoiceId, "B");
   assert.equal(g.draft.plausibleAlternatives.length, 2);
-  assert.ok(g.draft.decisionSeconds > WIN.startSeconds && g.draft.decisionSeconds < WIN.endSeconds);
+  assert.ok(g.draft.plausibleAlternatives.every((a) => typeof a.atSeconds === "number"));
+  assert.ok(g.draft.actualActionSeconds! > g.draft.decisionSeconds);
+  assert.ok(g.draft.visibleOutcomeSeconds! >= g.draft.actualActionSeconds!);
 });
 
 // --- prompt -------------------------------------------------------

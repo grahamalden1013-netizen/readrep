@@ -48,14 +48,21 @@ export const possessionResultSchema = z.object({
   /** When decision=false: why not (routine, already-decided, too-early, too-late, not-involved, hypothetical, catch-only, forced-output). */
   noDecisionReason: z.string().trim().max(400).nullable(),
 
+  /** Seconds from the START of the window to the pause point. */
   decisionOffsetSeconds: z.number().nonnegative().nullable(),
   decisionConfidence: confidence,
   actualAction: z.enum(DECISION_ACTIONS).nullable(),
+  /** Seconds from the window start to where the committed action is visible (after the pause). */
+  actualActionOffsetSeconds: z.number().nonnegative().nullable(),
   visibleOutcome: z.string().trim().max(600).nullable(),
+  /** Seconds from the window start to where the outcome is visible. */
+  visibleOutcomeOffsetSeconds: z.number().nonnegative().nullable(),
   plausibleAlternatives: z
     .array(
       z.object({
         action: z.string().trim().min(3).max(120),
+        /** Seconds from the window start to a frame that shows this option is available. */
+        atSecondsFromWindowStart: z.number().nonnegative(),
         visibleEvidence: z.string().trim().min(3).max(400),
       }),
     )
@@ -103,7 +110,9 @@ export const POSSESSION_JSON_SCHEMA = {
     "decisionOffsetSeconds",
     "decisionConfidence",
     "actualAction",
+    "actualActionOffsetSeconds",
     "visibleOutcome",
+    "visibleOutcomeOffsetSeconds",
     "plausibleAlternatives",
     "whyThisIsNotRoutine",
     "whyThePauseIsBeforeCommitment",
@@ -146,15 +155,21 @@ export const POSSESSION_JSON_SCHEMA = {
     decisionOffsetSeconds: { type: ["number", "null"], minimum: 0 },
     decisionConfidence: { type: "number", minimum: 0, maximum: 1 },
     actualAction: { type: ["string", "null"], enum: [...DECISION_ACTIONS, null] },
+    actualActionOffsetSeconds: { type: ["number", "null"], minimum: 0 },
     visibleOutcome: { type: ["string", "null"] },
+    visibleOutcomeOffsetSeconds: { type: ["number", "null"], minimum: 0 },
     plausibleAlternatives: {
       type: "array",
       maxItems: 4,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["action", "visibleEvidence"],
-        properties: { action: { type: "string" }, visibleEvidence: { type: "string" } },
+        required: ["action", "atSecondsFromWindowStart", "visibleEvidence"],
+        properties: {
+          action: { type: "string" },
+          atSecondsFromWindowStart: { type: "number", minimum: 0 },
+          visibleEvidence: { type: "string" },
+        },
       },
     },
     whyThisIsNotRoutine: { type: ["string", "null"] },

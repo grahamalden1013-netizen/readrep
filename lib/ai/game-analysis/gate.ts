@@ -1,9 +1,11 @@
 /**
  * The deterministic decision gate — pure, no I/O, no `server-only`.
  *
- * Given a parsed model verdict for one window, it decides whether a genuine,
- * teachable decision exists. Every rejection carries a specific reason. This is
- * unit-tested against recorded model responses (see test/fixtures).
+ * Given a parsed model verdict for one window AND the exact frame timestamps the
+ * model was shown, it decides whether a genuine, teachable decision exists.
+ * Every factual claim the model makes must land on a real supplied frame; a
+ * claim that merely asserts "visible evidence" with no locatable frame is
+ * rejected. Unit-tested against recorded model responses (see test/fixtures).
  */
 import {
   CANDIDATE_DECISION_CONFIDENCE_MIN,
@@ -14,6 +16,11 @@ import {
   PREFERRED_PRE_DECISION_SECONDS,
 } from "./limits";
 import type { PossessionResult } from "./schema";
+
+/** How close (seconds) a claimed timestamp must be to a real supplied frame. */
+export const FRAME_MATCH_TOLERANCE_SECONDS = 1.25;
+
+export type GroundedAlternative = { action: string; atSeconds: number; visibleEvidence: string };
 
 export type CandidateDraft = {
   clipStartSeconds: number;
@@ -40,12 +47,14 @@ export type CandidateDraft = {
   teachingValue: number;
   decisionTags: string[];
   warnings: string[];
-  // --- v2: the strict-decision evidence ---
+  // --- v2: the strict-decision evidence, all timestamp-grounded ---
   targetEvidence: { timestampSeconds: number; observation: string }[];
   possessionSummary: string | null;
   actualAction: string | null;
+  actualActionSeconds: number | null;
   visibleOutcome: string | null;
-  plausibleAlternatives: { action: string; visibleEvidence: string }[];
+  visibleOutcomeSeconds: number | null;
+  plausibleAlternatives: GroundedAlternative[];
   whyThisIsNotRoutine: string | null;
   whyThePauseIsBeforeCommitment: string | null;
 };
@@ -58,22 +67,25 @@ export type GateResult =
 const round = (n: number) => Math.round(n * 10) / 10;
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
+function nearestFrame(absSeconds: number, frames: number[]): { t: number; gap: number } | null {
+  if (frames.length === 0) return null;
+  let best = frames[0];
+  for (const f of frames) if (Math.abs(f - absSeconds) < Math.abs(best - absSeconds)) best = f;
+  const gap = Math.abs(best - absSeconds);
+  return gap <= FRAME_MATCH_TOLERANCE_SECONDS ? { t: best, gap } : null;
+}
+
 /**
  * Run the full decision definition over a parsed model verdict.
  *
- * 1  target visibly + confidently identified
- * 2  target directly involved in the possession
- * 3  ≥ 2 plausible actions at a precise moment
- * 4  those actions supported by VISIBLE evidence, not generic knowledge
- * 5  the player commits to one
- * 6  the footage after the pause shows that action + its immediate outcome
- * 7  pausing just before commitment makes a useful "what would you do?"
+ * @param frameTimestamps the exact seconds-into-game of every frame the model saw
  */
 export function evaluatePossessionResult(
   r: PossessionResult,
   window: { startSeconds: number; endSeconds: number },
+  frameTimestamps: number[] = [],
 ): GateResult {
-  // 1 — identification
+  // 1 — identification, grounded on supplied frames
   if (!r.targetVisible) {
     return { kind: "rejected", reason: "target-not-visible", detail: r.noDecisionReason ?? "not visible" };
   }
@@ -81,11 +93,11 @@ export function evaluatePossessionResult(
     return { kind: "rejected", reason: "target-not-visible", detail: `id ${r.targetConfidence.toFixed(2)}` };
   }
   const targetEvidence = r.targetEvidence
-    .filter((e) => e.timestampSeconds >= window.startSeconds - 1 && e.timestampSeconds <= window.endSeconds + 1)
     .map((e) => ({ ...e, timestampSeconds: round(clamp(e.timestampSeconds, window.startSeconds, window.endSeconds)) }))
+    .filter((e) => frameTimestamps.length === 0 || nearestFrame(e.timestampSeconds, frameTimestamps) !== null)
     .sort((a, b) => a.timestampSeconds - b.timestampSeconds);
   if (targetEvidence.length < 2) {
-    return { kind: "rejected", reason: "target-not-visible", detail: "no repeated visible target evidence" };
+    return { kind: "rejected", reason: "target-not-visible", detail: "target evidence not on supplied frames" };
   }
 
   // 2 — involvement
@@ -107,30 +119,55 @@ export function evaluatePossessionResult(
       detail: `offset ${r.decisionOffsetSeconds.toFixed(1)}s`,
     };
   }
+  const decisionSeconds = round(window.startSeconds + r.decisionOffsetSeconds);
 
-  // 4 — at least two alternatives, each with its own visible evidence
-  const alts = r.plausibleAlternatives
-    .map((a) => ({ action: a.action.trim(), visibleEvidence: a.visibleEvidence.trim() }))
-    .filter((a) => a.action.length > 0 && a.visibleEvidence.length > 0);
+  // 4 — ≥ 2 alternatives, each PINNED to a real frame at or before the pause
+  const alts: GroundedAlternative[] = [];
+  for (const a of r.plausibleAlternatives) {
+    const action = a.action.trim();
+    const evidence = a.visibleEvidence.trim();
+    if (!action || !evidence) continue;
+    const atAbs = round(window.startSeconds + a.atSecondsFromWindowStart);
+    if (atAbs > decisionSeconds + 0.75) continue; // must be available before commitment
+    if (frameTimestamps.length > 0 && !nearestFrame(atAbs, frameTimestamps)) continue; // must be a real frame
+    alts.push({ action, atSeconds: atAbs, visibleEvidence: evidence });
+  }
   if (alts.length < 2) {
     return {
       kind: "rejected",
       reason: "no-meaningful-decision",
-      detail: `only ${alts.length} alternative(s) with visible evidence`,
+      detail: `only ${alts.length} alternative(s) grounded on a frame before the pause`,
     };
   }
 
-  // 5 — a committed action
+  // 5 — a committed action, visible AFTER the pause on a real frame
   if (!r.actualAction) {
     return { kind: "rejected", reason: "no-meaningful-decision", detail: "no committed action" };
   }
-
-  // 6 — the action and its immediate outcome are visible after the pause
-  if (!r.visibleOutcome || r.visibleOutcome.trim().length < 3) {
-    return { kind: "rejected", reason: "outcome-not-visible", detail: "no visible outcome after the pause" };
+  if (r.actualActionOffsetSeconds === null) {
+    return { kind: "rejected", reason: "outcome-not-visible", detail: "no timestamp for the committed action" };
+  }
+  const actualActionSeconds = round(window.startSeconds + r.actualActionOffsetSeconds);
+  if (actualActionSeconds <= decisionSeconds || actualActionSeconds > window.endSeconds + 0.5) {
+    return { kind: "rejected", reason: "outcome-not-visible", detail: "committed action not shown after the pause" };
+  }
+  if (frameTimestamps.length > 0 && !nearestFrame(actualActionSeconds, frameTimestamps)) {
+    return { kind: "rejected", reason: "outcome-not-visible", detail: "committed action not on a supplied frame" };
   }
 
-  // 5/7 — the model must justify why this is not routine and why the pause is pre-commitment
+  // 6 — the outcome, visible on a real frame at or after the action
+  if (!r.visibleOutcome || r.visibleOutcome.trim().length < 3 || r.visibleOutcomeOffsetSeconds === null) {
+    return { kind: "rejected", reason: "outcome-not-visible", detail: "no visible outcome after the pause" };
+  }
+  const visibleOutcomeSeconds = round(window.startSeconds + r.visibleOutcomeOffsetSeconds);
+  if (visibleOutcomeSeconds < actualActionSeconds - 0.75 || visibleOutcomeSeconds > window.endSeconds + 0.5) {
+    return { kind: "rejected", reason: "outcome-not-visible", detail: "outcome timestamp out of order" };
+  }
+  if (frameTimestamps.length > 0 && !nearestFrame(visibleOutcomeSeconds, frameTimestamps)) {
+    return { kind: "rejected", reason: "outcome-not-visible", detail: "outcome not on a supplied frame" };
+  }
+
+  // 5/7 — the model must justify non-routine + pre-commitment
   if (!r.whyThisIsNotRoutine || r.whyThisIsNotRoutine.trim().length < 8) {
     return { kind: "rejected", reason: "no-meaningful-decision", detail: "not justified as non-routine" };
   }
@@ -139,9 +176,8 @@ export function evaluatePossessionResult(
   }
 
   // --- clip geometry ---
-  const decisionSeconds = round(window.startSeconds + r.decisionOffsetSeconds);
   const clipStartSeconds = round(Math.max(0, decisionSeconds - PREFERRED_PRE_DECISION_SECONDS));
-  const clipEndSeconds = round(Math.min(window.endSeconds, decisionSeconds + 6));
+  const clipEndSeconds = round(Math.min(window.endSeconds, Math.max(decisionSeconds + 6, visibleOutcomeSeconds + 1)));
   const preContext = decisionSeconds - clipStartSeconds;
   if (!(clipStartSeconds < decisionSeconds && decisionSeconds < clipEndSeconds && clipEndSeconds - clipStartSeconds >= 5)) {
     return { kind: "rejected", reason: "bad-timing", detail: `d=${decisionSeconds}` };
@@ -202,7 +238,9 @@ export function evaluatePossessionResult(
     targetEvidence,
     possessionSummary: r.possessionSummary,
     actualAction: r.actualAction,
+    actualActionSeconds,
     visibleOutcome: r.visibleOutcome,
+    visibleOutcomeSeconds,
     plausibleAlternatives: alts,
     whyThisIsNotRoutine: r.whyThisIsNotRoutine,
     whyThePauseIsBeforeCommitment: r.whyThePauseIsBeforeCommitment,

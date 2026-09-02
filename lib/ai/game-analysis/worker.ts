@@ -275,7 +275,12 @@ async function stepPossessions(job: GameAnalysisJob, cursor: Cursor): Promise<Ti
     if (wr.analyzed && (wr.analyzed.kind === "candidate" || wr.analyzed.kind === "flagged")) {
       candidateCount += 1;
       await candidateReps.insert([
-        candidateRow(job, wr.analyzed.draft, wr.analyzed.kind === "flagged" ? "needs_attention" : "pending_review"),
+        candidateRow(
+          job,
+          wr.analyzed.draft,
+          wr.analyzed.kind === "flagged" ? "needs_attention" : "pending_review",
+          wr.analyzed.verifier ?? null,
+        ),
       ]);
     } else {
       rejections.push({ window, reason: wr.ledger.outcome, detail: wr.ledger.reason });
@@ -353,8 +358,14 @@ async function stepRank(job: GameAnalysisJob, cursor: Cursor): Promise<TickResul
       targetEvidence: r.visibleEvidence,
       possessionSummary: r.possessionSummary ?? null,
       actualAction: r.actualAction ?? r.actualDecision,
+      actualActionSeconds: r.actualActionSeconds ?? null,
       visibleOutcome: r.outcome,
-      plausibleAlternatives: r.plausibleAlternatives ?? [],
+      visibleOutcomeSeconds: r.visibleOutcomeSeconds ?? null,
+      plausibleAlternatives: (r.plausibleAlternatives ?? []).map((a) => ({
+        action: a.action,
+        atSeconds: typeof a.atSeconds === "number" ? a.atSeconds : r.decisionSeconds,
+        visibleEvidence: a.visibleEvidence,
+      })),
       whyThisIsNotRoutine: r.whyThisIsNotRoutine ?? null,
       whyThePauseIsBeforeCommitment: r.whyThePauseIsBeforeCommitment ?? null,
     }),
@@ -431,6 +442,7 @@ function candidateRow(
   job: GameAnalysisJob,
   d: CandidateDraft,
   status: "pending_review" | "needs_attention",
+  verifier: Record<string, unknown> | null = null,
 ): Record<string, unknown> {
   return {
     analysis_job_id: job.id,
@@ -462,9 +474,12 @@ function candidateRow(
     teaching_value_score: d.teachingValue,
     possession_summary: d.possessionSummary,
     actual_action: d.actualAction,
+    actual_action_seconds: d.actualActionSeconds,
+    visible_outcome_seconds: d.visibleOutcomeSeconds,
     plausible_alternatives: d.plausibleAlternatives,
     why_not_routine: d.whyThisIsNotRoutine,
     why_pause_before_commit: d.whyThePauseIsBeforeCommitment,
+    verifier_verdict: verifier,
     dedupe_key: null,
     status,
   };
