@@ -67,6 +67,7 @@ export default async function ReviewPage({ params }: PageProps<"/games/[gameId]/
         source={source}
         initialCandidates={list.data.candidates}
         initialApproved={list.data.approved}
+        initialSummary={list.data.summary}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import { getBackend } from "@/lib/db";
 import { candidateReps, gameAnalysisJobs, type CandidateRepRow } from "@/lib/db/game-analysis";
 import { validateRepDraft } from "@/lib/reps/draft";
 import { MIN_POST_DECISION_SECONDS, MIN_PRE_DECISION_SECONDS } from "@/lib/ai/game-analysis/limits";
+import { summariseReview, type ReviewSummary } from "@/lib/reps/review-summary";
 import { SKILL_CATEGORIES, type Rep } from "@/lib/reps/schema";
 import { getGame } from "@/lib/store";
 import { getVideoDurationMs } from "@/lib/video/playback";
@@ -60,6 +61,12 @@ export type CandidateReviewView = {
     playerIdConfidence: number | null;
     decisionConfidence: number | null;
   };
+  review: {
+    playerVerdict: "correct" | "wrong" | null;
+    decisionVerdict: "real" | "not-meaningful" | null;
+    badPause: boolean;
+    notes: string | null;
+  };
 };
 
 function toReviewView(row: CandidateRepRow, jobId: string): CandidateReviewView {
@@ -95,12 +102,20 @@ function toReviewView(row: CandidateRepRow, jobId: string): CandidateReviewView 
       playerIdConfidence: row.playerIdConfidence,
       decisionConfidence: row.decisionConfidence,
     },
+    review: {
+      playerVerdict: row.reviewPlayerVerdict,
+      decisionVerdict: row.reviewDecisionVerdict,
+      badPause: row.reviewBadPause,
+      notes: row.reviewNotes,
+    },
   };
 }
 
 export async function listCandidatesForReview(
   jobId: string,
-): Promise<ActionResult<{ candidates: CandidateReviewView[]; approved: number; total: number }>> {
+): Promise<
+  ActionResult<{ candidates: CandidateReviewView[]; approved: number; total: number; summary: ReviewSummary }>
+> {
   return withAuthedAction(async () => {
     const id = idSchema.safeParse(jobId);
     if (!id.success) return { ok: false, error: "That review could not be found." };
@@ -112,8 +127,32 @@ export async function listCandidatesForReview(
         candidates: visible.map((r) => toReviewView(r, id.data)),
         approved: rows.filter((r) => r.status === "approved" || r.status === "edited").length,
         total: visible.length,
+        summary: summariseReview(rows),
       },
     };
+  });
+}
+
+const evalSchema = z.object({
+  candidateId: idSchema,
+  playerVerdict: z.enum(["correct", "wrong"]).nullable().optional(),
+  decisionVerdict: z.enum(["real", "not-meaningful"]).nullable().optional(),
+  badPause: z.boolean().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/** Save one of the five review controls / notes. Does not change status or content. */
+export async function setCandidateEval(input: z.input<typeof evalSchema>): Promise<ActionResult<null>> {
+  return withAuthedAction(async () => {
+    await requireOwnerWhenSupabase();
+    const parsed = evalSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "That review input was not recognised." };
+    const { candidateId, ...e } = parsed.data;
+    const row = await candidateReps.get(candidateId);
+    if (!row) return { ok: false, error: "That moment could not be found." };
+    await candidateReps.setEval(candidateId, e);
+    revalidatePath(`/games/${row.gameId}/review`);
+    return { ok: true, data: null };
   });
 }
 

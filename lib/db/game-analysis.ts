@@ -269,10 +269,22 @@ export type CandidateRepRow = {
   publishedRepId: string | null;
   targetJerseyNumber: string;
   targetTeamColor: string;
+  /** Human basketball-quality review verdicts (never change the candidate content). */
+  reviewPlayerVerdict: "correct" | "wrong" | null;
+  reviewDecisionVerdict: "real" | "not-meaningful" | null;
+  reviewBadPause: boolean;
+  reviewNotes: string | null;
+};
+
+export type CandidateReviewEval = {
+  playerVerdict?: "correct" | "wrong" | null;
+  decisionVerdict?: "real" | "not-meaningful" | null;
+  badPause?: boolean;
+  notes?: string | null;
 };
 
 const CAND_SELECT =
-  "id, analysis_job_id, game_id, clip_start_seconds, decision_seconds, clip_end_seconds, title, skill_category, difficulty, situation, prompt, answer_choices, best_read_choice_id, actual_decision_choice_id, actual_decision, outcome, coaching_explanation, visible_evidence, basketball_inferences, coach_preference_basis, involvement, uncertainty, player_identification_confidence, decision_confidence, teaching_value_score, rank, status, rejection_reason, published_rep_id, target_jersey_number, target_team_color";
+  "id, analysis_job_id, game_id, clip_start_seconds, decision_seconds, clip_end_seconds, title, skill_category, difficulty, situation, prompt, answer_choices, best_read_choice_id, actual_decision_choice_id, actual_decision, outcome, coaching_explanation, visible_evidence, basketball_inferences, coach_preference_basis, involvement, uncertainty, player_identification_confidence, decision_confidence, teaching_value_score, rank, status, rejection_reason, published_rep_id, target_jersey_number, target_team_color, review_player_verdict, review_decision_verdict, review_bad_pause, review_notes";
 
 const CHOICE_LETTERS = ["A", "B", "C", "D"];
 
@@ -337,6 +349,10 @@ function toCandidate(row: any): CandidateRepRow {
     publishedRepId: row.published_rep_id,
     targetJerseyNumber: row.target_jersey_number,
     targetTeamColor: row.target_team_color,
+    reviewPlayerVerdict: row.review_player_verdict ?? null,
+    reviewDecisionVerdict: row.review_decision_verdict ?? null,
+    reviewBadPause: row.review_bad_pause ?? false,
+    reviewNotes: row.review_notes ?? null,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -386,5 +402,23 @@ export const candidateReps = {
   async setRank(id: string, rank: number, status: CandidateStatus): Promise<void> {
     const c = await client();
     await c.from("ai_candidate_reps").update({ rank, status }).eq("id", id);
+  },
+
+  /** Store the coach's review verdicts. Never touches candidate content or status. */
+  async setEval(id: string, e: CandidateReviewEval): Promise<CandidateRepRow> {
+    const c = await client();
+    const patch: Record<string, unknown> = { reviewed_at: new Date().toISOString() };
+    if ("playerVerdict" in e) patch.review_player_verdict = e.playerVerdict ?? null;
+    if ("decisionVerdict" in e) patch.review_decision_verdict = e.decisionVerdict ?? null;
+    if ("badPause" in e) patch.review_bad_pause = Boolean(e.badPause);
+    if ("notes" in e) patch.review_notes = e.notes?.slice(0, 2000) ?? null;
+    const { data, error } = await c
+      .from("ai_candidate_reps")
+      .update(patch)
+      .eq("id", id)
+      .select(CAND_SELECT)
+      .single();
+    if (error) throw new Error("Could not save the review.");
+    return toCandidate(data);
   },
 };

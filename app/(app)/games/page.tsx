@@ -6,6 +6,7 @@ import { GameList, GameRow, gameStatus } from "@/components/app/game-row";
 import { getBackendAvailability } from "@/lib/db";
 import { getVideoConfig } from "@/lib/video";
 import { getRepsForGame, listGames } from "@/lib/store";
+import { getReviewInfoForGame } from "@/lib/actions/game-analysis";
 
 // Reads per-request state (signed-in user, stored games), so never prerendered.
 export const dynamic = "force-dynamic";
@@ -20,7 +21,8 @@ export default async function GamesPage() {
     games.map(async (game) => {
       const reps = await getRepsForGame(game.id, { includeDrafts: true });
       const published = reps.filter((rep) => rep.status === "published").length;
-      return { game, status: gameStatus(game), published, drafts: reps.length - published };
+      const review = game.origin === "demo" ? null : await getReviewInfoForGame(game.id);
+      return { game, status: gameStatus(game), published, drafts: reps.length - published, review };
     }),
   );
 
@@ -51,7 +53,7 @@ export default async function GamesPage() {
         />
       ) : (
         <GameList>
-          {rows.map(({ game, status, published, drafts }) => (
+          {rows.map(({ game, status, published, drafts, review }) => (
             <GameRow
               key={game.id}
               game={game}
@@ -60,7 +62,13 @@ export default async function GamesPage() {
               draftCount={drafts}
               actions={
                 <>
-                  {status.ready ? (
+                  {review && review.total > 0 ? (
+                    <ButtonLink href={`/games/${game.id}/review`} size="sm">
+                      {review.toReview > 0
+                        ? `Review ${review.toReview} rep${review.toReview === 1 ? "" : "s"}`
+                        : `Reviewed · ${review.approved} approved`}
+                    </ButtonLink>
+                  ) : status.ready ? (
                     <ButtonLink href={`/games/${game.id}/analysis`} size="sm">
                       Analyze
                     </ButtonLink>
@@ -73,6 +81,11 @@ export default async function GamesPage() {
                       Check status
                     </ButtonLink>
                   )}
+                  {review && review.total > 0 && status.ready ? (
+                    <ButtonLink href={`/games/${game.id}/analysis`} variant="ghost" size="sm">
+                      Analyze
+                    </ButtonLink>
+                  ) : null}
                   {published > 0 ? (
                     <ButtonLink href={`/games/${game.id}/processing`} variant="secondary" size="sm">
                       Take reps

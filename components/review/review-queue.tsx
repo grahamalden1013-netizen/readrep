@@ -12,8 +12,13 @@ import {
   buildSessionFromApproved,
   editCandidate,
   rejectCandidate,
+  setCandidateEval,
   type CandidateReviewView,
 } from "@/lib/actions/candidates";
+import type { ReviewSummary } from "@/lib/reps/review-summary";
+
+/** How far before the decision playback begins. */
+const LEAD_SECONDS = 5;
 
 function clock(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -21,28 +26,41 @@ function clock(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function pct(n: number | null): string {
+  return n == null ? "—" : `${Math.round(n * 100)}%`;
+}
+
+type Phase = "idle" | "watching" | "paused" | "revealing" | "revealed";
+type LocalEval = CandidateReviewView["review"];
+
 export function ReviewQueue({
   jobId,
   gameId,
   source,
   initialCandidates,
   initialApproved,
+  initialSummary,
 }: {
   jobId: string;
   gameId: string;
   source: VideoSource;
   initialCandidates: CandidateReviewView[];
   initialApproved: number;
+  initialSummary: ReviewSummary;
 }) {
   const router = useRouter();
   const videoRef = useRef<VideoSurfaceHandle>(null);
 
   const [candidates, setCandidates] = useState(initialCandidates);
   const [index, setIndex] = useState(() => {
-    const firstPending = initialCandidates.findIndex((c) => c.status === "pending_review" || c.status === "needs_attention");
+    const firstPending = initialCandidates.findIndex(
+      (c) => c.status === "pending_review" || c.status === "needs_attention",
+    );
     return firstPending === -1 ? 0 : firstPending;
   });
   const [approved, setApproved] = useState(initialApproved);
+  const [summary, setSummary] = useState(initialSummary);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showWhy, setShowWhy] = useState(false);
@@ -50,30 +68,61 @@ export function ReviewQueue({
   const [starting, setStarting] = useState(false);
 
   const current = candidates[index];
-  const reviewedCount = candidates.filter((c) => c.status !== "pending_review" && c.status !== "needs_attention").length;
+  const decided = (c: CandidateReviewView) =>
+    c.status === "approved" || c.status === "edited" || c.status === "rejected";
+  const reviewedCount = candidates.filter(decided).length;
   const allReviewed = reviewedCount >= candidates.length;
 
-  const playClip = useCallback(() => {
+  const startFrom = current ? Math.max(current.clip.startSeconds, current.clip.decisionSeconds - LEAD_SECONDS) : 0;
+
+  const play = useCallback(() => {
     if (!current) return;
-    videoRef.current?.playFrom(current.clip.startSeconds * 1000);
-  }, [current]);
+    setPhase("watching");
+    void videoRef.current?.playFrom(startFrom * 1000);
+  }, [current, startFrom]);
+
+  const onReachedStop = useCallback(() => {
+    setPhase((p) => (p === "watching" ? "paused" : p === "revealing" ? "revealed" : p));
+  }, []);
+
+  const reveal = useCallback(() => {
+    setPhase("revealing");
+    void videoRef.current?.resume();
+  }, []);
 
   const advance = useCallback(() => {
     setShowWhy(false);
     setEditing(false);
     setError(null);
+    setPhase("idle");
     const nextPending = candidates.findIndex(
       (c, i) => i > index && (c.status === "pending_review" || c.status === "needs_attention"),
     );
-    if (nextPending !== -1) {
-      setIndex(nextPending);
-    } else if (index < candidates.length - 1) {
-      setIndex(index + 1);
-    }
+    if (nextPending !== -1) setIndex(nextPending);
+    else if (index < candidates.length - 1) setIndex(index + 1);
   }, [candidates, index]);
 
-  function patchStatus(id: string, status: CandidateReviewView["status"]) {
-    setCandidates((list) => list.map((c) => (c.id === id ? { ...c, status } : c)));
+  function patch(id: string, next: Partial<CandidateReviewView>) {
+    setCandidates((list) => {
+      const updated = list.map((c) => (c.id === id ? { ...c, ...next } : c));
+      setSummary((s) => recomputeSummary(s, updated));
+      return updated;
+    });
+  }
+
+  async function saveEval(field: keyof LocalEval, value: unknown) {
+    if (!current) return;
+    const nextReview: LocalEval = { ...current.review, [field]: value };
+    patch(current.id, { review: nextReview });
+    const key =
+      field === "playerVerdict"
+        ? "playerVerdict"
+        : field === "decisionVerdict"
+          ? "decisionVerdict"
+          : field === "badPause"
+            ? "badPause"
+            : "notes";
+    await setCandidateEval({ candidateId: current.id, [key]: value } as never);
   }
 
   async function onApprove() {
@@ -82,7 +131,7 @@ export function ReviewQueue({
     const result = await approveCandidate(current.id);
     setBusy(false);
     if (!result.ok) return setError(result.error);
-    patchStatus(current.id, "approved");
+    patch(current.id, { status: "approved" });
     setApproved((n) => n + (current.status === "approved" || current.status === "edited" ? 0 : 1));
     advance();
   }
@@ -91,10 +140,11 @@ export function ReviewQueue({
     if (!current) return;
     setBusy(true);
     const wasApproved = current.status === "approved" || current.status === "edited";
-    const result = await rejectCandidate(current.id);
+    const reason = current.review.notes?.trim() || undefined;
+    const result = await rejectCandidate(current.id, reason);
     setBusy(false);
     if (!result.ok) return setError(result.error);
-    patchStatus(current.id, "rejected");
+    patch(current.id, { status: "rejected" });
     if (wasApproved) setApproved((n) => Math.max(0, n - 1));
     advance();
   }
@@ -115,15 +165,19 @@ export function ReviewQueue({
     return (
       <div className="flex flex-col gap-4">
         <p className="display-3 text-fg">Nothing to review.</p>
-        <p className="max-w-prose text-sm text-fg-soft">
-          The analysis didn&rsquo;t produce any moments to look at.
-        </p>
         <ButtonLink href={`/games/${gameId}/analysis`} variant="secondary">
           Back to analysis
         </ButtonLink>
       </div>
     );
   }
+
+  const stopAtMs =
+    phase === "watching"
+      ? current.clip.decisionSeconds * 1000
+      : phase === "revealing"
+        ? current.clip.endSeconds * 1000
+        : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,37 +206,74 @@ export function ReviewQueue({
       {current ? (
         <>
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+            {/* ---- video ---- */}
             <div className="overflow-hidden rounded-frame border border-line bg-surface">
               <div className="relative">
                 <VideoSurface
                   ref={videoRef}
                   source={source}
                   muted={false}
-                  stopAtMs={current.clip.decisionSeconds * 1000}
+                  stopAtMs={stopAtMs}
+                  onReachedStop={onReachedStop}
                 />
+
+                {/* target marked ONLY before playback begins */}
+                {phase === "idle" ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-canvas/80 px-6 text-center">
+                    <p className="label-caps text-fg-faint">Rep {index + 1} of {candidates.length}</p>
+                    <p className="display-3 text-fg">
+                      Follow <span className="text-accent">{current.target.teamColor} #{current.target.jerseyNumber}</span>
+                    </p>
+                    <p className="max-w-sm text-sm text-fg-soft">
+                      The clip starts {LEAD_SECONDS}s before the decision and pauses at{" "}
+                      {clock(current.clip.decisionSeconds)}.
+                    </p>
+                    <Button size="lg" onClick={play}>
+                      Start clip
+                    </Button>
+                  </div>
+                ) : null}
+
+                {/* obvious pause at the decision point */}
+                {phase === "paused" ? (
+                  <div className="pointer-events-none absolute inset-0">
+                    <span className="absolute inset-x-0 top-0 h-1 bg-accent" />
+                    <span className="absolute inset-x-0 bottom-0 h-1 bg-accent" />
+                    <span className="decision-mark absolute left-1/2 top-3 -translate-x-1/2 rounded-sm bg-canvas/85 px-2 py-1 text-[0.8125rem] font-semibold text-fg">
+                      Decision point — {clock(current.clip.decisionSeconds)}
+                    </span>
+                  </div>
+                ) : null}
               </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
                 <span className="label-caps text-fg-faint">
-                  Target: {current.target.teamColor} #{current.target.jerseyNumber} &middot; decision at{" "}
-                  {clock(current.clip.decisionSeconds)}
+                  {clock(startFrom)} → <span className="text-accent">{clock(current.clip.decisionSeconds)}</span> →{" "}
+                  {clock(current.clip.endSeconds)}
                 </span>
-                <Button variant="secondary" size="sm" onClick={playClip}>
-                  Play to the decision
-                </Button>
+                <div className="flex gap-1.5">
+                  <Button variant="ghost" size="sm" onClick={play}>
+                    {phase === "idle" ? "Start" : "Replay from start"}
+                  </Button>
+                  {phase === "paused" ? (
+                    <Button variant="secondary" size="sm" onClick={reveal}>
+                      Reveal outcome
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </div>
 
+            {/* ---- panel ---- */}
             <div className="flex flex-col gap-4">
               {editing ? (
                 <EditForm
                   candidate={current}
                   onCancel={() => setEditing(false)}
                   onSaved={(updated) => {
-                    setCandidates((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+                    patch(updated.id, updated);
                     setEditing(false);
-                    if (updated.status === "edited" && current.status !== "approved" && current.status !== "edited") {
-                      setApproved((n) => n + 1);
-                    }
+                    if (current.status !== "approved" && current.status !== "edited") setApproved((n) => n + 1);
                   }}
                   setError={setError}
                 />
@@ -190,48 +281,65 @@ export function ReviewQueue({
                 <>
                   <div className="flex flex-col gap-1.5">
                     <p className="display-3 text-fg">{current.title}</p>
-                    <p className="text-sm leading-relaxed text-fg-soft">{current.situation}</p>
+                    {phase !== "idle" ? (
+                      <p className="text-sm leading-relaxed text-fg-soft">{current.situation}</p>
+                    ) : null}
                   </div>
 
-                  <p className="decision-mark text-[0.95rem] font-semibold leading-snug text-fg">
-                    {current.prompt}
-                  </p>
+                  {phase === "idle" ? (
+                    <p className="text-sm text-fg-faint">Press Start to watch the play, then judge it.</p>
+                  ) : (
+                    <>
+                      <p className="decision-mark text-[0.95rem] font-semibold leading-snug text-fg">{current.prompt}</p>
+                      <ul className="flex flex-col gap-2">
+                        {current.choices.map((choice) => {
+                          const best = choice.id === current.recommendedChoiceId;
+                          return (
+                            <li
+                              key={choice.id}
+                              className={`flex items-start gap-3 rounded-control border px-3 py-2.5 text-sm ${
+                                best ? "border-accent bg-raised text-fg" : "border-line bg-surface text-fg-soft"
+                              }`}
+                            >
+                              <span className="timecode mt-0.5 text-fg-faint">{choice.id}</span>
+                              <span className="flex-1">{choice.text}</span>
+                              {best ? <span className="label-caps text-accent">Recommended</span> : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
 
-                  <ul className="flex flex-col gap-2">
-                    {current.choices.map((choice, i) => {
-                      const best = choice.id === current.recommendedChoiceId;
-                      return (
-                        <li
-                          key={choice.id}
-                          className={`flex items-start gap-3 rounded-control border px-3 py-2.5 text-sm ${
-                            best ? "border-accent bg-raised text-fg" : "border-line bg-surface text-fg-soft"
-                          }`}
-                        >
-                          <span className="timecode mt-0.5 text-fg-faint">{String.fromCharCode(65 + i)}</span>
-                          <span className="flex-1">{choice.text}</span>
-                          {best ? <span className="label-caps text-accent">Best read</span> : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
+                      {phase === "revealed" ? (
+                        <div className="flex flex-col gap-2 rounded-panel border border-line bg-raised p-3.5">
+                          {current.outcome ? (
+                            <p className="text-sm text-fg-soft">
+                              <span className="label-caps mr-2 text-fg-faint">What happened</span>
+                              {current.outcome}
+                            </p>
+                          ) : null}
+                          {current.explanation ? (
+                            <p className="text-sm leading-relaxed text-fg-soft">{current.explanation}</p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-fg-faint">
+                          {phase === "paused"
+                            ? "Press “Reveal outcome” to see what happened."
+                            : "Watching…"}
+                        </p>
+                      )}
+                    </>
+                  )}
 
-                  {current.outcome ? (
-                    <p className="text-sm text-fg-soft">
-                      <span className="label-caps mr-2 text-fg-faint">What happened</span>
-                      {current.outcome}
-                    </p>
+                  {phase !== "idle" ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowWhy((v) => !v)}
+                      className="self-start rounded-xs text-[0.8125rem] font-medium text-fg underline underline-offset-4"
+                    >
+                      {showWhy ? "Hide" : "Why this moment?"}
+                    </button>
                   ) : null}
-                  {current.explanation ? (
-                    <p className="text-sm leading-relaxed text-fg-soft">{current.explanation}</p>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={() => setShowWhy((v) => !v)}
-                    className="self-start rounded-xs text-[0.8125rem] font-medium text-fg underline underline-offset-4"
-                  >
-                    {showWhy ? "Hide" : "Why this moment?"}
-                  </button>
 
                   {showWhy ? (
                     <div className="flex flex-col gap-3 rounded-panel border border-line bg-raised p-3.5 text-[0.8125rem] text-fg-soft">
@@ -254,16 +362,6 @@ export function ReviewQueue({
                           </ul>
                         </div>
                       ) : null}
-                      {current.why.coachPreferences.length > 0 ? (
-                        <div>
-                          <p className="label-caps mb-1 text-fg-faint">Coach preference used</p>
-                          <ul className="flex flex-col gap-1">
-                            {current.why.coachPreferences.map((p, i) => (
-                              <li key={i}>{p.influence}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
                       {current.why.uncertainty.length > 0 ? (
                         <p>
                           <span className="label-caps mr-2 text-fg-faint">Uncertain</span>
@@ -271,14 +369,8 @@ export function ReviewQueue({
                         </p>
                       ) : null}
                       <p className="text-fg-faint">
-                        Player match{" "}
-                        {current.why.playerIdConfidence != null
-                          ? `${Math.round(current.why.playerIdConfidence * 100)}%`
-                          : "—"}{" "}
-                        &middot; decision clarity{" "}
-                        {current.why.decisionConfidence != null
-                          ? `${Math.round(current.why.decisionConfidence * 100)}%`
-                          : "—"}
+                        Player match {pct(current.why.playerIdConfidence)} &middot; decision clarity{" "}
+                        {pct(current.why.decisionConfidence)}
                       </p>
                     </div>
                   ) : null}
@@ -286,6 +378,60 @@ export function ReviewQueue({
               )}
             </div>
           </div>
+
+          {/* ---- five review controls + notes ---- */}
+          {!editing && phase !== "idle" ? (
+            <div className="flex flex-col gap-3 rounded-panel border border-line bg-surface p-4">
+              <SectionLabel>Your judgement</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                <Toggle
+                  label="Correct player"
+                  active={current.review.playerVerdict === "correct"}
+                  onClick={() => void saveEval("playerVerdict", current.review.playerVerdict === "correct" ? null : "correct")}
+                />
+                <Toggle
+                  label="Wrong player"
+                  tone="bad"
+                  active={current.review.playerVerdict === "wrong"}
+                  onClick={() => void saveEval("playerVerdict", current.review.playerVerdict === "wrong" ? null : "wrong")}
+                />
+                <Toggle
+                  label="Real decision"
+                  active={current.review.decisionVerdict === "real"}
+                  onClick={() => void saveEval("decisionVerdict", current.review.decisionVerdict === "real" ? null : "real")}
+                />
+                <Toggle
+                  label="Not a meaningful decision"
+                  tone="bad"
+                  active={current.review.decisionVerdict === "not-meaningful"}
+                  onClick={() =>
+                    void saveEval(
+                      "decisionVerdict",
+                      current.review.decisionVerdict === "not-meaningful" ? null : "not-meaningful",
+                    )
+                  }
+                />
+                <Toggle
+                  label="Bad pause point"
+                  tone="bad"
+                  active={current.review.badPause}
+                  onClick={() => void saveEval("badPause", !current.review.badPause)}
+                />
+              </div>
+              <Field label="Notes (optional)">
+                <textarea
+                  className={textareaClass}
+                  rows={2}
+                  defaultValue={current.review.notes ?? ""}
+                  maxLength={2000}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim() || null;
+                    if (v !== (current.review.notes ?? null)) void saveEval("notes", v);
+                  }}
+                />
+              </Field>
+            </div>
+          ) : null}
 
           {error ? (
             <p role="alert" className="text-sm text-bad">
@@ -312,11 +458,34 @@ export function ReviewQueue({
         </>
       ) : null}
 
+      {/* ---- evaluation summary ---- */}
       <div className="flex flex-col gap-3 border-t border-line pt-5">
-        <SectionLabel>{allReviewed ? "All reviewed" : "When you're ready"}</SectionLabel>
+        <SectionLabel>{allReviewed ? "Evaluation summary" : "Evaluation so far"}</SectionLabel>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+          <Stat label="Correct-player rate" value={ratePct(summary.correctPlayerRate)} />
+          <Stat label="Meaningful-decision rate" value={ratePct(summary.meaningfulDecisionRate)} />
+          <Stat label="Good-pause rate" value={ratePct(summary.goodPauseRate)} />
+          <Stat label="Approved reps" value={`${summary.approved} / ${candidates.length}`} />
+          <Stat label="Evaluated" value={`${summary.evaluated} / ${candidates.length}`} />
+          <Stat label="Rejected" value={String(summary.rejected.length)} />
+        </dl>
+        {summary.rejected.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-[0.8125rem] text-fg-soft">
+            {summary.rejected.map((r, i) => (
+              <li key={i}>
+                <span className="text-fg-faint">rejected —</span> {r.title}
+                {r.reason ? <span className="text-fg-faint"> · {r.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      {/* ---- publish gate ---- */}
+      <div className="flex flex-col gap-3 border-t border-line pt-5">
         <p className="max-w-prose text-sm text-fg-soft">
           {approved > 0
-            ? `${approved} ${approved === 1 ? "moment" : "moments"} will become reps for your player.`
+            ? `${approved} approved ${approved === 1 ? "moment" : "moments"} will become the player's reps. Nothing is published until you press this.`
             : "Approve at least one moment to build a session."}
         </p>
         <div className="flex flex-wrap gap-3">
@@ -329,6 +498,75 @@ export function ReviewQueue({
         </div>
       </div>
     </div>
+  );
+}
+
+function ratePct(n: number | null): string {
+  return n == null ? "—" : `${Math.round(n * 100)}%`;
+}
+
+function recomputeSummary(prev: ReviewSummary, list: CandidateReviewView[]): ReviewSummary {
+  const nonRejected = list.filter((c) => c.status !== "rejected");
+  const playerJudged = nonRejected.filter((c) => c.review.playerVerdict);
+  const decisionJudged = nonRejected.filter((c) => c.review.decisionVerdict);
+  const pauseJudged = nonRejected.filter(
+    (c) => c.review.playerVerdict || c.review.decisionVerdict || c.review.badPause,
+  );
+  const rate = (num: number, den: number) => (den === 0 ? null : Math.round((num / den) * 100) / 100);
+  return {
+    ...prev,
+    total: nonRejected.length,
+    evaluated: nonRejected.filter(
+      (c) => c.review.playerVerdict || c.review.decisionVerdict || c.review.badPause || c.review.notes,
+    ).length,
+    correctPlayerRate: rate(playerJudged.filter((c) => c.review.playerVerdict === "correct").length, playerJudged.length),
+    meaningfulDecisionRate: rate(
+      decisionJudged.filter((c) => c.review.decisionVerdict === "real").length,
+      decisionJudged.length,
+    ),
+    goodPauseRate: rate(pauseJudged.filter((c) => !c.review.badPause).length, pauseJudged.length),
+    approved: list.filter((c) => c.status === "approved" || c.status === "edited").length,
+    rejected: list
+      .filter((c) => c.status === "rejected")
+      .map((c) => ({ title: c.title, rank: c.rank, reason: c.review.notes ?? null })),
+  };
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="label-caps text-fg-faint">{label}</dt>
+      <dd className="tabular-nums text-fg">{value}</dd>
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  active,
+  tone = "good",
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  tone?: "good" | "bad";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-control border px-3 py-2 text-[0.8125rem] transition-[border-color,background-color] duration-150 ease-signal ${
+        active
+          ? tone === "bad"
+            ? "border-bad bg-raised text-bad"
+            : "border-accent bg-raised text-fg"
+          : "border-line-strong bg-surface text-fg-soft hover:border-fg-faint"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -428,9 +666,7 @@ function EditForm({
               className={inputClass}
               value={choice.text}
               maxLength={120}
-              onChange={(e) =>
-                setChoices((list) => list.map((c, j) => (j === i ? { ...c, text: e.target.value } : c)))
-              }
+              onChange={(e) => setChoices((list) => list.map((c, j) => (j === i ? { ...c, text: e.target.value } : c)))}
             />
           </div>
         ))}

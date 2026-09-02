@@ -10,7 +10,7 @@ import { scoutTeamColorCandidates } from "@/lib/ai/game-analysis/scout";
 import { runAnalysisTick } from "@/lib/ai/game-analysis/worker";
 import { getCoachingProfile } from "@/lib/db/coaching-profile";
 import { COACHING_PROFILE_VERSION, isProfileComplete } from "@/lib/coaching/profile";
-import { gameAnalysisJobs, type GameAnalysisJob } from "@/lib/db/game-analysis";
+import { candidateReps, gameAnalysisJobs, type GameAnalysisJob } from "@/lib/db/game-analysis";
 import { getGame } from "@/lib/store";
 import { requireOwnerWhenSupabase, withAuthedAction } from "./guard";
 import type { ActionResult } from "./result";
@@ -294,6 +294,33 @@ export async function getLatestGameAnalysisForGame(gameId: string): Promise<Game
     if (!id.success) return null;
     const job = await gameAnalysisJobs.latestForGame(id.data);
     return job ? toView(job) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Server-component helper for the Film library: how many candidates are waiting
+ * to be reviewed for this game, and how many are already approved. Null when
+ * there is no completed analysis.
+ */
+export async function getReviewInfoForGame(
+  gameId: string,
+): Promise<{ jobId: string; toReview: number; total: number; approved: number } | null> {
+  if (!isAiConfigured()) return null;
+  try {
+    const id = z.string().min(1).max(64).safeParse(gameId);
+    if (!id.success) return null;
+    const job = await gameAnalysisJobs.latestForGame(id.data);
+    if (!job || job.status !== "completed") return null;
+    const rows = await candidateReps.listForJob(job.id);
+    const visible = rows.filter((r) => r.status !== "rejected");
+    return {
+      jobId: job.id,
+      total: visible.length,
+      toReview: visible.filter((r) => r.status === "pending_review" || r.status === "needs_attention").length,
+      approved: rows.filter((r) => r.status === "approved" || r.status === "edited").length,
+    };
   } catch {
     return null;
   }
