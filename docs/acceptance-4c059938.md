@@ -119,6 +119,50 @@ candidate can never reach a session. Covered by
 | estimated cost | ≈ $3.62 reasoning + ≈ $0.30 scout/discovery = **≈ $3.92** |
 | model | `gpt-5.6-terra` (`OPENAI_REP_MODEL` unset → default) |
 
+## Repair run (2026-09-01) — defects 1–3
+
+`scripts/repair-run.ts` recomputes the queue from the persisted baseline data
+(`scratchpad/coverage-cursor.json`) with **2 new model calls only** (windows 55
+and 68).
+
+| | |
+| --- | --- |
+| candidates before dedupe | 10 (11 baseline − 1 removed for context) |
+| candidates after dedupe | **9** |
+| merged | window **25 → 24** — "same possession — clips overlap 479–487 s, decisions 5.4 s apart" (this is the baseline #2/#8 pair) |
+| rejected for insufficient-pre-decision-context | **1** — window 68 (baseline #9): reprocessed under the fixed pipeline it returns `target-not-visible`; the stored draft's pause sat on the window's first frame. Removed. |
+| #1/#9 pair | resolved — #9 removed by defect 1, leaving #1 (window 67) alone |
+| #6/#10 pair | resolved — kept **separate** (windows 47 & 48, 19 s apart, clips do not overlap; different possessions) |
+| window 55 parses now | **yes** → `target-not-visible` (a real semantic outcome, not `invalid-output`). No valid decision was lost — the model reports #15 is not visible there. |
+| repair-run cost | 2 model calls, 24,702 in / 2,014 out tokens ≈ **$0.05** + a few frame fetches |
+
+Tests added (`test/game-analysis-pipeline.test.ts`, 141 total, all pass):
+`mergeDuplicates` merges overlapping windows with inconsistent tags keeping the
+clearer id; keeps close-but-non-overlapping decisions; resolves the three
+baseline leak pairs; never merges well-spaced possessions; `classifyOutcome`
+maps `insufficient-pre-decision-context` to `target-no-decision`; schema tests
+updated for indexed choices.
+
+### Final queue after repair (9 reps, still to be checked against the film)
+
+| # | window | decision | lead | title | category | preview |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 67 | 21:01 | 7.0 s | Attack the Gap With a Help Read | help-recognition | `animated.webp?start=1254&end=1267` |
+| 2 | 24 | 8:01 | 7.0 s | High Ball Screen: Roll to the Rim | pick-and-roll-read | `?start=474&end=487` |
+| 3 | 33 | 9:59 | 7.0 s | Transition attack: finish through the lane | transition-decision | `?start=592&end=605` |
+| 4 | 27 | 8:42 | 7.0 s | Weak-Side Rim Rotation | defensive-rotation | `?start=515&end=528` |
+| 5 | 71 | 21:55 | 7.0 s | Attack the Left-Side Closeout | closeout-attack | `?start=1308&end=1321` |
+| 6 | 47 | 14:23 | 7.0 s | Use the Screen, Then Find the Wing | pick-and-roll-read | `?start=856&end=869` |
+| 7 | 83 | 25:57 | 7.0 s | High Screen: Roll Into Space | pick-and-roll-read | `?start=1550&end=1562` |
+| 8 | 35 | 10:28 | 7.0 s | Drive Help, Then Kick Out | help-recognition | `?start=621&end=634` |
+| 9 | 48 | 14:42 | 7.0 s | Protect the Rim on the Late Drive | defensive-rotation | `?start=875&end=886` |
+
+(prefix: `https://image.mux.com/yqvyYqVLV1k1H2kvoqEtuFvZoVfvvIg8kf4nIfb2sQo/`)
+
+Every entry now has 7.0 s of pre-decision context. The pipeline still needs a
+manual film check for identification accuracy and candidate quality — **not
+accepted on those axes.**
+
 ## Baseline conclusions (do not "fix" before this is agreed)
 
 - Coverage, resumability, exactly-once, terminal-state accounting, and the
