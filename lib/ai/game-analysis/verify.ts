@@ -4,16 +4,10 @@ import { toAiError } from "@/lib/ai/errors";
 import { assertAiConfigured } from "@/lib/ai/config";
 import { DEFAULT_REP_MODEL, PROVIDER_TIMEOUT_MS } from "@/lib/ai/limits";
 import type { CandidateDraft } from "./gate";
+import { verifierAgrees, type VerifierVerdict } from "./verify-types";
 
-export type VerifierVerdict = {
-  correctTarget: boolean;
-  meaningfulDecision: boolean;
-  twoAlternativesVisible: boolean;
-  pauseBeforeCommitment: boolean;
-  outcomeVisible: boolean;
-  /** One or two sentences on anything the verifier could not confirm. */
-  notes: string;
-};
+export { verifierAgrees };
+export type { VerifierVerdict };
 
 const VERIFIER_SCHEMA = {
   type: "object",
@@ -35,12 +29,6 @@ const VERIFIER_SCHEMA = {
     notes: { type: "string" },
   },
 } as const;
-
-export function verifierAgrees(v: VerifierVerdict): boolean {
-  return (
-    v.correctTarget && v.meaningfulDecision && v.twoAlternativesVisible && v.pauseBeforeCommitment && v.outcomeVisible
-  );
-}
 
 /**
  * An INDEPENDENT second pass. It receives the same temporal frames and the

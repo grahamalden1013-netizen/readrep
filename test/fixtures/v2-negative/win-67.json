@@ -1,12 +1,14 @@
 {
-  "note": "Regression fixture — the 21:01 clip (window 67). The strict v2 gate MUST reject this as no-meaningful-decision.",
-  "capturedAt": "2026-09-02T15:49:25.022Z",
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Attack the Gap With a Help Read\" (20:50-21:08). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T15:49:25.020Z",
   "window": {
     "startSeconds": 1250,
     "endSeconds": 1268
   },
   "gateKind": "rejected",
   "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "verifierVerdict": null,
   "modelResponse": {
     "targetVisible": true,
     "targetConfidence": 0.98,

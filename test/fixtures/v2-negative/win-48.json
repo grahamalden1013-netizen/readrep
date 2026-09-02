@@ -1,0 +1,74 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Protect the Rim on the Late Drive\" (14:28-14:46). game-analysis-v2 MUST reject this (never accept, never needs_attention).",
+  "capturedAt": "2026-09-02T15:47:42.669Z",
+  "window": {
+    "startSeconds": 868,
+    "endSeconds": 886
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.96,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 868,
+        "observation": "White #15 is visible near midcourt in the white pinstriped uniform; the blue 15 is readable on his back."
+      },
+      {
+        "timestampSeconds": 872.04,
+        "observation": "The same white #15 remains visible moving in the central-right area of the floor during the white team's advance."
+      },
+      {
+        "timestampSeconds": 876.48,
+        "observation": "During the timeout huddle, the target is clearly visible from behind with the blue number 15 readable on his white uniform."
+      },
+      {
+        "timestampSeconds": 883.95,
+        "observation": "White #15 is visible in the paint area during the later purple-team half-court possession."
+      }
+    ],
+    "possessionSummary": "White #15 is visible as the white team advances early in the window, after which the broadcast cuts to a timeout huddle. Play then resumes with the purple team bringing the ball into the frontcourt late in the period and finishing a half-court action near the basket. The target is an off-ball defender in the visible late sequence.",
+    "targetInvolvement": "off-ball-defense",
+    "decision": false,
+    "noDecisionReason": "no-meaningful-decision",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.91,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "In the final visible live sequence, white #15 is positioned around the lane while a purple ball-handler attacks from the right side.",
+        "confidence": 0.72
+      },
+      {
+        "statement": "The available frames do not clearly establish a discrete help, switch, closeout, tag, or rebound-assignment commitment by #15.",
+        "confidence": 0.92
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "The broadcast interruption for the timeout breaks the continuity of the original white-team advance.",
+      "In the late purple possession, #15 is visible near the paint, but the sampled frames do not show his individual defensive assignment or a clear before-and-after choice point.",
+      "No two frame-supported alternatives can be identified immediately before a confirmed target commitment."
+    ],
+    "warnings": [],
+    "teachingValue": 0
+  }
+}

@@ -168,7 +168,7 @@ async function runDiscovery(
         ? { kind: "flagged", draft: gate.draft, reason: gate.reason, usage, model }
         : { kind: "candidate", draft: gate.draft, usage, model };
 
-  onRaw?.({ raw: parsed.data, gate });
+  onRaw?.({ raw: parsed.data, gate, discoveryUsage: usage });
   return { analyzed, frames, frameTimestamps };
 }
 
@@ -268,7 +268,7 @@ export async function analyzePossessionVerified(
 }
 
 /** Optional hook so a debug/eval script can capture the raw model verdict + gate result. */
-type RawHook = (x: { raw: PossessionResult; gate: GateResult }) => void;
+type RawHook = (x: { raw: PossessionResult; gate: GateResult; discoveryUsage: Usage }) => void;
 let onRaw: RawHook | undefined;
 export function __setRawHook(fn: RawHook | undefined): void {
   onRaw = fn;

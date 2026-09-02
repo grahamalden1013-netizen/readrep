@@ -1,0 +1,75 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"High Ball Screen: Roll to the Rim\" (7:50-8:08). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T15:49:39.245Z",
+  "window": {
+    "startSeconds": 470,
+    "endSeconds": 488
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "verifierVerdict": null,
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.98,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 470,
+        "observation": "White #15 is visible near midcourt in a white uniform; the blue 15 is readable on his back."
+      },
+      {
+        "timestampSeconds": 477.26,
+        "observation": "During the timeout huddle, the target is centrally visible from behind with jersey number 15 clearly readable."
+      },
+      {
+        "timestampSeconds": 482.22,
+        "observation": "White #15 is again identifiable in the half-court offense near the top/left side of the lane-line area by the readable 15 on his back."
+      },
+      {
+        "timestampSeconds": 485.95,
+        "observation": "The same white #15 is visible near the top of the formation as white #11 handles on the left wing."
+      }
+    ],
+    "possessionSummary": "The window shows a purple possession ending at the basket, followed by a timeout/huddle, then a white possession advancing into the frontcourt. In the final offensive sequence, white #11 handles on the left wing while white #15 works off the ball near the upper middle of the floor and moves into the action before #11 drives toward the lane.",
+    "targetInvolvement": "off-ball-offense",
+    "decision": false,
+    "noDecisionReason": "no-meaningful-decision",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.9,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "In the final white half-court sequence, #15 appears to move toward the ball-handler's side and participate in the offensive action as #11 begins a left-wing drive.",
+        "confidence": 0.72
+      },
+      {
+        "statement": "The available frames do not clearly establish whether #15 sets a completed screen, slips, or simply relocates as the ball-handler attacks.",
+        "confidence": 0.84
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "The timeout interrupts the window and prevents a continuous view of the preceding and following game action.",
+      "Although #15 is visibly involved off the ball, the frames do not show a precise, teachable choice point with two visibly supported alternatives before a clearly identifiable commitment.",
+      "The final frames show #11's drive and action near the rim, but do not provide sufficient temporal detail to evaluate #15's off-ball movement as a distinct decision."
+    ],
+    "warnings": [],
+    "teachingValue": 0
+  }
+}

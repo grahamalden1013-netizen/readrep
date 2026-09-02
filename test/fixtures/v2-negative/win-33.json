@@ -1,0 +1,74 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Transition attack: finish through the lane\" (9:56-10:14). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T15:50:13.590Z",
+  "window": {
+    "startSeconds": 596,
+    "endSeconds": 614
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "verifierVerdict": null,
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.86,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 596,
+        "observation": "White #15 is visible around the defensive basket area in the opening wide view, matching the white pinstriped uniform and number from the confirmed reference."
+      },
+      {
+        "timestampSeconds": 598.05,
+        "observation": "The same white player is tracked continuously as he secures possession and advances the ball up the middle-right side in transition."
+      },
+      {
+        "timestampSeconds": 600.04,
+        "observation": "The tracked white ball-handler continues into the lane toward the right-side basket, with the same build, uniform, and movement continuity from the previous frame."
+      },
+      {
+        "timestampSeconds": 609.96,
+        "observation": "A close-up after the whistle shows the same white-uniformed player, consistent with the player followed through the transition."
+      }
+    ],
+    "possessionSummary": "White #15 appears to gain control near his defensive basket, pushes the ball in transition, and drives into traffic at the opposite basket. Contact/stoppage follows the attempt, after which the broadcast cuts to close-ups and replay footage.",
+    "targetInvolvement": "on-ball-offense",
+    "decision": false,
+    "noDecisionReason": "no-meaningful-decision",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.88,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "The target's movement is a continuous transition push into a rim attack rather than a clearly separated read-and-commitment moment.",
+        "confidence": 0.88
+      },
+      {
+        "statement": "The visible white teammates are trailing or stationed near the finish, but the frames do not show a clearly available passing lane or a distinct alternative that would make a fair pause-point.",
+        "confidence": 0.84
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "The broadcast-wide angles do not provide a clear, frame-grounded passing lane or a second viable target immediately before the drive.",
+      "The contact at the basket is visible, but the exact ruling and whether the attempt scored are not established by these frames."
+    ],
+    "warnings": [],
+    "teachingValue": 0
+  }
+}

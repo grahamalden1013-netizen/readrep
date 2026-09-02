@@ -1,0 +1,67 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"High Screen: Roll Into Space\" (25:52-26:02). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T16:35:14.012Z",
+  "window": {
+    "startSeconds": 1552,
+    "endSeconds": 1562
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "verifierVerdict": null,
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.94,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 1557.97,
+        "observation": "White #15 is visible around midcourt, running centrally alongside the advancing white ball-handler; the blue 15 on his back is readable."
+      },
+      {
+        "timestampSeconds": 1558.79,
+        "observation": "The same white #15 is visible just ahead of the ball-handler near the center circle, engaging the nearby purple defender as the ball-handler advances."
+      },
+      {
+        "timestampSeconds": 1559.75,
+        "observation": "White #15 continues forward from the midcourt action after the ball has moved ahead toward the right side."
+      }
+    ],
+    "possessionSummary": "After a purple basket/transition sequence, white inbounds and advances the ball from its backcourt. White #15 runs through the middle lane and makes brief off-ball contact/positioning near the center circle as the ball-handler comes past, then the ball is advanced toward the right side and white flows into early offense.",
+    "targetInvolvement": "off-ball-offense",
+    "decision": false,
+    "noDecisionReason": "no-meaningful-decision",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.9,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "#15's central positioning and brief engagement with the purple defender may function as a transition screen or brush action for the ball-handler.",
+        "confidence": 0.58
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "The footage shows #15's off-ball engagement, but the exact nature of the contact and whether it was a deliberately chosen screen rather than normal transition traffic is not fully clear.",
+      "The frames do not visibly establish two materially distinct, viable alternatives for #15 immediately before the engagement.",
+      "The subsequent right-side advance does not isolate an immediate outcome caused by #15's action."
+    ],
+    "warnings": [],
+    "teachingValue": 0
+  }
+}

@@ -95,24 +95,43 @@ async function main() {
         `   FINAL:     ${finalResult}${finalReason ? ` — ${finalReason}` : ""}\n`,
     );
 
-    if (w === 67 && captured) {
-      mkdirSync(resolve(process.cwd(), "test/fixtures"), { recursive: true });
+    if (captured) {
+      mkdirSync(resolve(process.cwd(), "test/fixtures/v2-negative"), { recursive: true });
       writeFileSync(
-        resolve(process.cwd(), "test/fixtures/decision-21-01-response.json"),
+        resolve(process.cwd(), `test/fixtures/v2-negative/win-${w}.json`),
         JSON.stringify(
           {
-            note: "Regression fixture — the 21:01 clip (window 67). The strict v2 gate MUST reject this as no-meaningful-decision.",
+            note: `Permanent NEGATIVE regression fixture — baseline clip "${TITLES[w]}" (${clock(win.startSeconds)}-${clock(win.endSeconds)}). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.`,
             capturedAt: new Date().toISOString(),
             window: win,
-            frameTimestamps: cursor.__frameTimestamps ?? [],
             gateKind: captured.gate.kind,
             gateReason: captured.gate.kind === "rejected" ? captured.gate.reason : null,
+            finalKind: res.kind, // "rejected" | "flagged" (never "candidate")
+            verifierVerdict: res.verifier ?? null,
             modelResponse: captured.raw,
           },
           null,
           2,
         ),
       );
+      if (w === 67) {
+        // keep the legacy path referenced by decision-gate-regression.test.ts
+        writeFileSync(
+          resolve(process.cwd(), "test/fixtures/decision-21-01-response.json"),
+          JSON.stringify(
+            {
+              note: "Regression fixture — the 21:01 clip (window 67). The strict v2 gate MUST reject this as no-meaningful-decision.",
+              capturedAt: new Date().toISOString(),
+              window: win,
+              gateKind: captured.gate.kind,
+              gateReason: captured.gate.kind === "rejected" ? captured.gate.reason : null,
+              modelResponse: captured.raw,
+            },
+            null,
+            2,
+          ),
+        );
+      }
     }
 
     if (res.kind === "candidate" || res.kind === "flagged") {

@@ -1,0 +1,75 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Drive Help, Then Kick Out\" (10:24-10:42). game-analysis-v2 MUST reject this (never accept, never needs_attention).",
+  "capturedAt": "2026-09-02T15:47:26.602Z",
+  "window": {
+    "startSeconds": 624,
+    "endSeconds": 642
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.93,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 624,
+        "observation": "White #15 is clearly visible near midcourt in the white uniform, with the blue 15 readable on his back."
+      },
+      {
+        "timestampSeconds": 628.04,
+        "observation": "The same white #15 is visible on the right side of the midcourt area as white brings the ball up."
+      },
+      {
+        "timestampSeconds": 632.48,
+        "observation": "During the timeout, the target stands in the huddle with blue number 15 clearly readable on his back."
+      },
+      {
+        "timestampSeconds": 634.74,
+        "observation": "White #15 remains clearly visible in the timeout huddle, confirming the target appearance."
+      }
+    ],
+    "possessionSummary": "The window includes a brief earlier white offensive sequence, then a timeout huddle, followed by a later white half-court possession. In the later possession, a white ball-handler works from the left side toward the lane and the ball is subsequently finished at the rim; the broadcast view does not provide reliable visual continuity tying white #15 to a specific on-court action in that sequence.",
+    "targetInvolvement": "not-involved",
+    "decision": false,
+    "noDecisionReason": "target-not-materially-involved",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.9,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "White #15 is conclusively identified in the early live frames and during the timeout, but the later live-action camera angle does not keep his jersey number visible enough to track him into a commitment event.",
+        "confidence": 0.93
+      },
+      {
+        "statement": "The later white possession ends with a made basket, as the score increases from 7 to 10 and the shot clock resets to 24.",
+        "confidence": 0.94
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "The supplied sequence contains a timeout and a later possession, preventing uninterrupted tracking of #15 from the early live frames to the later action.",
+      "The number of the white ball-handler and the white players nearest the final rim action is not legible enough to attribute the drive, pass, or finish to #15."
+    ],
+    "warnings": [
+      "Do not assign the later drive or rim finish to white #15 based only on white-uniform proximity or roster metadata."
+    ],
+    "teachingValue": 0
+  }
+}

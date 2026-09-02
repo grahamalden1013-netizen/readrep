@@ -1,0 +1,112 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Use the Screen, Then Find the Wing\" (14:14-14:32). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T15:51:42.094Z",
+  "window": {
+    "startSeconds": 854,
+    "endSeconds": 872
+  },
+  "gateKind": "candidate",
+  "gateReason": null,
+  "finalKind": "flagged",
+  "verifierVerdict": {
+    "correctTarget": false,
+    "meaningfulDecision": false,
+    "twoAlternativesVisible": true,
+    "pauseBeforeCommitment": true,
+    "outcomeVisible": true,
+    "notes": "The on-ball player coming off #16's screen is visibly white #5, not white #15. White #15 is not the player making the proposed decision. The subsequent frames show #5 shooting, the shot missing, and purple securing possession with a 24-second reset."
+  },
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.94,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 854,
+        "observation": "White #15 is visible near the middle of the floor as the white offense initiates; the white uniform and 15 identify him."
+      },
+      {
+        "timestampSeconds": 858.04,
+        "observation": "The same white #15 has the ball on the left side above the arc, identifiable by the visible 15 and continuity from the opening alignment."
+      },
+      {
+        "timestampSeconds": 861.26,
+        "observation": "White #15 continues the left-side dribble toward teammate #16's screen, with the number and uniform visible."
+      },
+      {
+        "timestampSeconds": 863.52,
+        "observation": "White #15 rises for the left-wing pull-up jumper after coming off the screen."
+      }
+    ],
+    "possessionSummary": "After the timeout, white #15 initiates from the left side, uses a high screen from white #16, and comes off it toward the middle-left wing. He elects to pull up for a jumper; the shot does not produce a white score, and purple gains possession and starts upcourt.",
+    "targetInvolvement": "on-ball-offense",
+    "decision": true,
+    "noDecisionReason": null,
+    "decisionOffsetSeconds": 8.9,
+    "decisionConfidence": 0.78,
+    "actualAction": "shot",
+    "actualActionOffsetSeconds": 9.4,
+    "visibleOutcome": "The pull-up jumper does not score; purple has the ball with a reset shot clock and begins transition the other way.",
+    "visibleOutcomeOffsetSeconds": 12.22,
+    "plausibleAlternatives": [
+      {
+        "action": "Pull up for the jumper coming off #16's screen",
+        "atSecondsFromWindowStart": 8.9,
+        "visibleEvidence": "#15 has turned the corner into open left-wing space while his initial defender is navigating behind/alongside the screen; he has room to rise before the contest arrives."
+      },
+      {
+        "action": "Continue off the screen toward the lane",
+        "atSecondsFromWindowStart": 8.9,
+        "visibleEvidence": "#15 is dribbling laterally toward the middle after #16's screen, with a visible path from the left wing toward the top of the paint, though a purple interior defender is positioned nearer the lane."
+      },
+      {
+        "action": "Hit #16 after the screen",
+        "atSecondsFromWindowStart": 8.9,
+        "visibleEvidence": "White #16 is visibly moving from the screen area into the middle of the floor as #15 comes off the action, presenting a short interior passing option."
+      }
+    ],
+    "whyThisIsNotRoutine": "This is not merely a catch or an automatic swing pass: #15 is the ball handler coming off a high screen, and the screen has created a live read between his pull-up, a continued drive, and the screener's interior option.",
+    "whyThePauseIsBeforeCommitment": "The useful pause is immediately after #15 clears #16's screen but before he gathers into the jumper. At that point, the trailing defender, the lane defender, and #16's movement are all visible, while #15 has not yet committed to the shot.",
+    "title": "Read the high screen: pull-up, drive, or find the screener",
+    "skillCategory": "pick-and-roll-read",
+    "difficulty": "medium",
+    "situation": "White #15 comes off #16's high screen from the left wing with the defense recovering and an interior defender waiting nearer the paint.",
+    "prompt": "As #15 clears #16's screen, should he pull up, keep driving toward the lane, or find #16 inside?",
+    "answerChoices": [
+      {
+        "text": "Pull up from the left wing before the recovering defender can fully contest."
+      },
+      {
+        "text": "Keep the dribble moving toward the lane and force the interior defender to commit."
+      },
+      {
+        "text": "Pass to #16 moving into the middle after setting the screen."
+      }
+    ],
+    "bestReadIndex": 0,
+    "actualDecisionIndex": 0,
+    "coachingExplanation": "#15 creates separation coming off #16's screen and has a visible pull-up window before the on-ball defender can square back to him. The paint is occupied by a purple defender and #16's interior route is crowded, so the immediate pull-up is a defensible read even though the shot does not go in.",
+    "basketballInferences": [
+      {
+        "statement": "The defense appears to be handling the action with the on-ball defender recovering over/around the screen and a separate purple defender stationed nearer the paint.",
+        "confidence": 0.8
+      },
+      {
+        "statement": "The available pull-up window is brief because the recovering defender is close enough to contest by the release.",
+        "confidence": 0.86
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [
+      "high-screen",
+      "ball-handler",
+      "pull-up",
+      "screen-read"
+    ],
+    "uncertainty": [
+      "The exact defensive coverage call is not identifiable from the available broadcast angles.",
+      "The screener's final destination is partially obscured by the players around the lane."
+    ],
+    "warnings": [],
+    "teachingValue": 0.74
+  }
+}

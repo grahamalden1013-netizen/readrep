@@ -1,0 +1,71 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Weak-Side Rim Rotation\" (8:32-8:50). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T15:50:26.172Z",
+  "window": {
+    "startSeconds": 512,
+    "endSeconds": 530
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "finalKind": "rejected",
+  "verifierVerdict": null,
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.98,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 512,
+        "observation": "White #15 is clearly visible near the center circle, with the blue 15 readable on his back."
+      },
+      {
+        "timestampSeconds": 519.26,
+        "observation": "The same white #15 is visible in the half-court offense near the upper middle of the formation."
+      },
+      {
+        "timestampSeconds": 520.48,
+        "observation": "During the timeout huddle, white #15 is clearly visible from behind with his jersey number readable."
+      },
+      {
+        "timestampSeconds": 527.95,
+        "observation": "White #15 is visible on the left side of the lane/baseline area while the purple offense attacks."
+      }
+    ],
+    "possessionSummary": "The window begins with white bringing the ball into the frontcourt, but the broadcast cuts away and a timeout huddle follows. After the timeout, purple runs a half-court possession against white; #15 is positioned near the paint as the ball is worked on the right side and then driven toward the basket. The frames do not show a continuous, target-centered decision sequence through the possession.",
+    "targetInvolvement": "off-ball-defense",
+    "decision": false,
+    "noDecisionReason": "no-meaningful-decision",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.9,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "After the timeout, white #15 appears to be an off-ball defender near the left side of the lane as purple attacks from the right side.",
+        "confidence": 0.77
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "The broadcast includes a timeout and a major discontinuity between the opening white possession and the later purple possession.",
+      "The available post-timeout frames do not establish whether #15's paint positioning is a deliberate help rotation, a preassigned matchup position, or rebound positioning.",
+      "No precise target commitment with two visibly supported alternatives and a visible immediate outcome is captured."
+    ],
+    "warnings": [],
+    "teachingValue": 0
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "note": "Permanent NEGATIVE regression fixture — baseline clip \"Attack the Left-Side Closeout\" (21:46-22:04). Human review confirmed no meaningful decision by white #15. game-analysis-v2 must NEVER accept/publish this; if discovery+gate pass, the independent verifier must disagree.",
+  "capturedAt": "2026-09-02T15:50:36.568Z",
+  "window": {
+    "startSeconds": 1306,
+    "endSeconds": 1324
+  },
+  "gateKind": "rejected",
+  "gateReason": "target-not-visible",
+  "finalKind": "rejected",
+  "verifierVerdict": null,
+  "modelResponse": {
+    "targetVisible": false,
+    "targetConfidence": 0.18,
+    "targetEvidence": [],
+    "possessionSummary": "The live sequence shown after the reference images begins with white inbounding on the right baseline and running a half-court action against purple. White moves the ball toward the middle/right side, a shot is attempted at the rim, and purple secures possession as the shot clock resets. White #15 cannot be confidently located in the live court frames.",
+    "targetInvolvement": "not-involved",
+    "decision": false,
+    "noDecisionReason": "target-not-confidently-identified",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.96,
+    "actualAction": null,
+    "actualActionOffsetSeconds": null,
+    "visibleOutcome": null,
+    "visibleOutcomeOffsetSeconds": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "White #15 is clearly readable in a reference huddle image, but the player cannot be visually tracked from that reference into the later live possession.",
+      "Several white players are visible in the half-court sequence, but no live-frame jersey number or continuous identifying cue confirms any as #15."
+    ],
+    "warnings": [
+      "Do not assign the on-court shot, pass, or off-ball movement to the target without a confirmed identification."
+    ],
+    "teachingValue": 0
+  }
+}
