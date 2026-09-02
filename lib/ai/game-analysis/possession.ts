@@ -9,8 +9,12 @@ import { relevantPreferences, type DecisionTag } from "@/lib/coaching/profile";
 import {
   CANDIDATE_DECISION_CONFIDENCE_MIN,
   CANDIDATE_ID_CONFIDENCE_MIN,
+  CHOICE_LETTERS,
+  MIN_POST_DECISION_SECONDS,
+  MIN_PRE_DECISION_SECONDS,
   POSSESSION_FRAMES,
   POSSESSION_FRAME_WIDTH,
+  PREFERRED_PRE_DECISION_SECONDS,
 } from "./limits";
 import { buildPossessionPrompt } from "./prompt";
 import {
@@ -210,15 +214,38 @@ export async function analyzePossession(
   if (!r.hasDecision || r.decisionOffsetSeconds === null) {
     return { kind: "rejected", reason: "no-decision", detail: r.involvement ?? "", usage, model };
   }
+  // The pause must sit far enough into the analysed window that the model
+  // actually observed the setup — a pause on the first frames has no context.
+  if (r.decisionOffsetSeconds < MIN_PRE_DECISION_SECONDS) {
+    return {
+      kind: "rejected",
+      reason: "insufficient-pre-decision-context",
+      detail: `offset ${r.decisionOffsetSeconds.toFixed(1)}s`,
+      usage,
+      model,
+    };
+  }
 
   // --- turn the window-relative offset into absolute clip timing, verified ---
   const decisionSeconds = round(window.startSeconds + r.decisionOffsetSeconds);
-  const clipStartSeconds = round(Math.max(0, decisionSeconds - 7));
+  // Expand backward into the source video for 3-5 s of lead when it is safe
+  // (i.e. not before the start of the film).
+  const clipStartSeconds = round(Math.max(0, decisionSeconds - PREFERRED_PRE_DECISION_SECONDS));
   const clipEndSeconds = round(Math.min(window.endSeconds, decisionSeconds + 6));
+  const preContext = decisionSeconds - clipStartSeconds;
   if (!(clipStartSeconds < decisionSeconds && decisionSeconds < clipEndSeconds && clipEndSeconds - clipStartSeconds >= 5)) {
     return { kind: "rejected", reason: "bad-timing", detail: `d=${decisionSeconds}`, usage, model };
   }
-  if (clipEndSeconds - decisionSeconds < 2) {
+  if (preContext < MIN_PRE_DECISION_SECONDS) {
+    return {
+      kind: "rejected",
+      reason: "insufficient-pre-decision-context",
+      detail: `only ${preContext.toFixed(1)}s before the pause`,
+      usage,
+      model,
+    };
+  }
+  if (clipEndSeconds - decisionSeconds < MIN_POST_DECISION_SECONDS) {
     return { kind: "rejected", reason: "no-outcome-room", detail: "", usage, model };
   }
 
@@ -233,12 +260,24 @@ export async function analyzePossession(
     return { kind: "rejected", reason: "weak-evidence", detail: `${keptEvidence.length} in-window`, usage, model };
   }
 
-  const choices = r.answerChoices;
-  const ids = choices.map((c) => c.id);
-  const uniqueText = new Set(choices.map((c) => c.text.trim().toLowerCase()));
-  if (choices.length < 2 || uniqueText.size !== choices.length || !r.bestReadChoiceId || !ids.includes(r.bestReadChoiceId)) {
-    return { kind: "rejected", reason: "bad-choices", detail: `${choices.length} choices`, usage, model };
+  // Model returns an ordered list of choice TEXT; ids are assigned here (A, B, …).
+  const choiceTexts = r.answerChoices.map((c) => c.text.trim()).filter(Boolean);
+  const uniqueText = new Set(choiceTexts.map((t) => t.toLowerCase()));
+  if (
+    choiceTexts.length < 2 ||
+    uniqueText.size !== choiceTexts.length ||
+    r.bestReadIndex === null ||
+    r.bestReadIndex >= choiceTexts.length
+  ) {
+    return { kind: "rejected", reason: "bad-choices", detail: `${choiceTexts.length} choices`, usage, model };
   }
+  const choices = choiceTexts.map((text, i) => ({ id: CHOICE_LETTERS[i], text }));
+  const bestReadChoiceId = CHOICE_LETTERS[r.bestReadIndex];
+  const actualDecisionChoiceId =
+    r.actualDecisionIndex !== null && r.actualDecisionIndex < choiceTexts.length
+      ? CHOICE_LETTERS[r.actualDecisionIndex]
+      : null;
+
   if (!r.title || !r.situation || !r.prompt || !r.outcome || !r.coachingExplanation) {
     return { kind: "rejected", reason: "incomplete-draft", detail: "", usage, model };
   }
@@ -253,8 +292,8 @@ export async function analyzePossession(
     situation: r.situation,
     prompt: r.prompt,
     answerChoices: choices,
-    bestReadChoiceId: r.bestReadChoiceId,
-    actualDecisionChoiceId: r.actualDecisionChoiceId && ids.includes(r.actualDecisionChoiceId) ? r.actualDecisionChoiceId : null,
+    bestReadChoiceId,
+    actualDecisionChoiceId,
     actualDecision: r.actualDecision,
     outcome: r.outcome,
     coachingExplanation: r.coachingExplanation,

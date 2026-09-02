@@ -1,10 +1,11 @@
 import type { CandidateDraft } from "./possession";
 import { MAX_CANDIDATES } from "./limits";
+import { mergeDuplicates, type MergeRecord } from "./merge";
 
 export type RankedCandidate = CandidateDraft & { rank: number; dedupeKey: string; score: number };
 
-/** Bucket a decision so near-identical teaching moments collapse together. */
-function dedupeKey(c: CandidateDraft): string {
+/** Only used to interleave the queue for variety — never to drop a candidate. */
+function varietyKey(c: CandidateDraft): string {
   const cat = c.skillCategory ?? "uncategorised";
   const tags = [...c.decisionTags].map((t) => t.toLowerCase()).sort().slice(0, 2).join("+");
   return `${cat}:${tags || "general"}`;
@@ -30,27 +31,26 @@ function score(c: CandidateDraft): number {
 }
 
 /**
- * Stage F. Deduplicate to one candidate per teaching bucket (keeping the
- * strongest), then rank by score with a light variety bonus so the queue is not
- * five of the same read. Caps at MAX_CANDIDATES.
+ * Stage F. Merge windows that describe the same basketball decision
+ * (timestamp + clip overlap, see {@link mergeDuplicates}), then rank by score
+ * with a light variety bonus so the queue is not five of the same read.
+ * Caps at MAX_CANDIDATES. Also returns the merge records.
  */
-export function dedupeAndRank(candidates: CandidateDraft[]): RankedCandidate[] {
-  const scored = candidates
-    .map((c) => ({ ...c, score: score(c), dedupeKey: dedupeKey(c), rank: 0 }))
+export function rankWithMergeReport(candidates: CandidateDraft[]): {
+  ranked: RankedCandidate[];
+  merges: MergeRecord[];
+} {
+  const { kept, merges } = mergeDuplicates(candidates);
+
+  const scored = kept
+    .map((c) => ({ ...c, score: score(c), dedupeKey: varietyKey(c), rank: 0 }))
     .sort((a, b) => b.score - a.score);
 
-  const bestPerBucket = new Map<string, RankedCandidate>();
-  for (const c of scored) {
-    const existing = bestPerBucket.get(c.dedupeKey);
-    if (!existing || c.score > existing.score) bestPerBucket.set(c.dedupeKey, c);
-  }
-
-  // Interleave buckets so the first few reps are varied.
-  const buckets = [...bestPerBucket.values()].sort((a, b) => b.score - a.score);
+  // Interleave distinct skill categories into the front so the first few reps vary.
   const seenCat = new Set<string>();
   const front: RankedCandidate[] = [];
   const rest: RankedCandidate[] = [];
-  for (const c of buckets) {
+  for (const c of scored) {
     const cat = c.skillCategory ?? c.dedupeKey;
     if (!seenCat.has(cat)) {
       seenCat.add(cat);
@@ -59,6 +59,11 @@ export function dedupeAndRank(candidates: CandidateDraft[]): RankedCandidate[] {
       rest.push(c);
     }
   }
-  const ordered = [...front, ...rest.sort((a, b) => b.score - a.score)].slice(0, MAX_CANDIDATES);
-  return ordered.map((c, i) => ({ ...c, rank: i + 1 }));
+  const ordered = [...front, ...rest].slice(0, MAX_CANDIDATES);
+  return { ranked: ordered.map((c, i) => ({ ...c, rank: i + 1 })), merges };
+}
+
+/** Back-compat: the ranked queue only. */
+export function dedupeAndRank(candidates: CandidateDraft[]): RankedCandidate[] {
+  return rankWithMergeReport(candidates).ranked;
 }

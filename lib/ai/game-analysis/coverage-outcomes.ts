@@ -24,6 +24,7 @@ export type WindowLedgerEntry = {
 
 const NO_DECISION_REASONS = new Set([
   "no-decision",
+  "insufficient-pre-decision-context",
   "bad-timing",
   "no-outcome-room",
   "weak-evidence",

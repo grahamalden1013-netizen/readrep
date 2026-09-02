@@ -56,9 +56,9 @@ export function buildPossessionPrompt(input: PossessionPromptInput): {
       DEFENSE.join(", ") +
       ". The player does NOT need the ball. Reject the window (hasDecision=false) if: the player is off-screen, not meaningfully involved, the sequence shows no genuine choice, the alternatives would have to be invented, or the outcome cannot be read well enough to teach from it.",
     "",
-    "Step 3 — if there is a decision, find the single best pause point: the instant just BEFORE the player commits to an action. Report decisionOffsetSeconds = seconds from the START of this window to that instant. There must be enough footage after it in this window to show what happened.",
+    "Step 3 — if there is a decision, find the single best pause point: the instant just BEFORE the player commits to an action. Report decisionOffsetSeconds = seconds from the START of this window to that instant. It MUST be at least 2 seconds: there has to be visible setup before the pause for the player to read the situation. If the decision is already underway at the very first frame of this window, set hasDecision=false. There must also be enough footage after the pause in this window to show what happened.",
     "",
-    "Step 4 — produce the draft: a title, a one-line situation, a prompt (the question at the pause), 2-4 CONCRETE plausible choices (no placeholders, exactly one bestReadChoiceId), the actualDecisionChoiceId (or null if unclassifiable), a short outcome from the visible frames only, and a 1-3 sentence coachingExplanation. skillCategory must be exactly one of: " +
+    "Step 4 — produce the draft: a title, a one-line situation, a prompt (the question at the pause), and 2-4 CONCRETE plausible choices as an ORDERED LIST of choice text (no ids, no placeholders). bestReadIndex = the 0-based position of the single best read in that list. actualDecisionIndex = the 0-based position of what the player actually did, or null if unclassifiable. Also give a short outcome from the visible frames only and a 1-3 sentence coachingExplanation. skillCategory must be exactly one of: " +
       SKILL_CATEGORIES.join(", ") +
       ", or null — never invent one.",
     "",

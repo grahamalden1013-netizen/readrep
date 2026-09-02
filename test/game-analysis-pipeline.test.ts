@@ -13,6 +13,7 @@ import {
   POSSESSION_WINDOW_SECONDS,
 } from "@/lib/ai/game-analysis/limits";
 import { dedupeAndRank } from "@/lib/ai/game-analysis/rank";
+import { mergeDuplicates } from "@/lib/ai/game-analysis/merge";
 import type { CandidateDraft } from "@/lib/ai/game-analysis/possession";
 import { possessionResultSchema } from "@/lib/ai/game-analysis/schema";
 import { buildPossessionPrompt } from "@/lib/ai/game-analysis/prompt";
@@ -104,31 +105,32 @@ test("buildPossessionWindows discards a span below the minimum", () => {
   assert.deepEqual(buildPossessionWindows([{ startSeconds: 10, endSeconds: 10 + MIN_POSSESSION_WINDOW_SECONDS - 1 }]), []);
 });
 
-// --- Stage F: dedupe + rank -----------------------------------------
+// --- Stage F: timestamp merge + rank ------------------------------
 
-function draft(over: Partial<CandidateDraft>): CandidateDraft {
+/** A candidate at `decisionSeconds`; clip defaults to [d-5, d+6]. */
+function draft(decisionSeconds: number, over: Partial<CandidateDraft> = {}): CandidateDraft {
   return {
-    clipStartSeconds: 100,
-    decisionSeconds: 107,
-    clipEndSeconds: 114,
+    clipStartSeconds: decisionSeconds - 5,
+    decisionSeconds,
+    clipEndSeconds: decisionSeconds + 6,
     title: "Drive and kick",
     skillCategory: "help-recognition",
     difficulty: "medium",
     situation: "Middle drive, low man steps up.",
     prompt: "What is the read?",
     answerChoices: [
-      { id: "a", text: "Finish" },
-      { id: "b", text: "Kick to the corner" },
-      { id: "c", text: "Skip it weakside" },
+      { id: "A", text: "Finish" },
+      { id: "B", text: "Kick to the corner" },
+      { id: "C", text: "Skip it weakside" },
     ],
-    bestReadChoiceId: "b",
-    actualDecisionChoiceId: "a",
+    bestReadChoiceId: "B",
+    actualDecisionChoiceId: "A",
     actualDecision: "Forced the finish",
     outcome: "Blocked at the rim",
     coachingExplanation: "The low man fully committed, so the corner is open.",
     visibleEvidence: [
-      { timestampSeconds: 103, observation: "target drives middle" },
-      { timestampSeconds: 106, observation: "low man leaves the corner" },
+      { timestampSeconds: decisionSeconds - 4, observation: "target drives middle" },
+      { timestampSeconds: decisionSeconds - 1, observation: "low man leaves the corner" },
     ],
     basketballInferences: [],
     coachPreferenceBasis: [],
@@ -143,25 +145,58 @@ function draft(over: Partial<CandidateDraft>): CandidateDraft {
   };
 }
 
-test("dedupeAndRank keeps the strongest of a duplicate bucket", () => {
-  const weak = draft({ playerIdConfidence: 0.6, decisionConfidence: 0.55, teachingValue: 0.5 });
-  const strong = draft({ playerIdConfidence: 0.95, decisionConfidence: 0.9, teachingValue: 0.9 });
+test("mergeDuplicates merges two overlapping windows with inconsistent tags, keeping the clearer id", () => {
+  const a = draft(481, { title: "High ball screen", decisionTags: ["ball-screen"], playerIdConfidence: 0.96 });
+  const b = draft(486, {
+    title: "Roll to the rim after the high screen",
+    skillCategory: "pick-and-roll-read",
+    decisionTags: ["pick-and-roll", "rim-pressure"],
+    playerIdConfidence: 0.92,
+  });
+  const { kept, merges } = mergeDuplicates([a, b]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].playerIdConfidence, 0.96);
+  assert.equal(merges.length, 1);
+  assert.match(merges[0].reason, /clips overlap/);
+});
+
+test("mergeDuplicates keeps two close-in-time decisions whose clips do not overlap", () => {
+  const a = draft(863, { skillCategory: "pick-and-roll-read" });
+  const b = draft(882, { skillCategory: "defensive-rotation" }); // 19s apart, clips [858,869] vs [877,888]
+  const { kept, merges } = mergeDuplicates([a, b]);
+  assert.equal(kept.length, 2);
+  assert.equal(merges.length, 0);
+});
+
+test("mergeDuplicates resolves the three baseline leak pairs", () => {
+  assert.equal(mergeDuplicates([draft(481), draft(486)]).kept.length, 1); // #2/#8 -> merge
+  assert.equal(mergeDuplicates([draft(1261), draft(1264)]).kept.length, 1); // #1/#9 -> merge
+  assert.equal(mergeDuplicates([draft(863), draft(882)]).kept.length, 2); // #6/#10 -> keep both
+});
+
+test("mergeDuplicates never merges genuinely separate, well-spaced possessions", () => {
+  assert.equal(mergeDuplicates([draft(100), draft(300), draft(600)]).kept.length, 3);
+});
+
+test("dedupeAndRank keeps the stronger of an overlapping pair and ranks it #1", () => {
+  const weak = draft(107, { playerIdConfidence: 0.6, decisionConfidence: 0.55, teachingValue: 0.5 });
+  const strong = draft(110, { playerIdConfidence: 0.95, decisionConfidence: 0.9, teachingValue: 0.9 });
   const ranked = dedupeAndRank([weak, strong]);
   assert.equal(ranked.length, 1);
   assert.equal(ranked[0].playerIdConfidence, 0.95);
   assert.equal(ranked[0].rank, 1);
 });
 
-test("dedupeAndRank ranks distinct buckets and caps the count", () => {
+test("dedupeAndRank keeps distinct spaced-out decisions and caps the count", () => {
   const many = Array.from({ length: MAX_CANDIDATES + 6 }, (_, i) =>
-    draft({
+    draft(60 + i * 40, {
       skillCategory: i % 2 === 0 ? "help-recognition" : "closeout-attack",
       decisionTags: [`tag-${i}`],
       playerIdConfidence: 0.5 + (i % 5) / 20,
     }),
   );
   const ranked = dedupeAndRank(many);
-  assert.ok(ranked.length <= MAX_CANDIDATES);
+  assert.equal(ranked.length, MAX_CANDIDATES);
   assert.deepEqual(
     ranked.map((r) => r.rank),
     ranked.map((_, i) => i + 1),
@@ -169,12 +204,10 @@ test("dedupeAndRank ranks distinct buckets and caps the count", () => {
 });
 
 test("dedupeAndRank puts a different skill category in the first two", () => {
-  const a = draft({ skillCategory: "help-recognition", decisionTags: ["drive-help"], teachingValue: 0.9 });
-  const b = draft({ skillCategory: "help-recognition", decisionTags: ["drive-help"], teachingValue: 0.85 });
-  const c = draft({ skillCategory: "closeout-attack", decisionTags: ["closeout"], teachingValue: 0.6 });
-  const ranked = dedupeAndRank([a, b, c]);
-  const cats = new Set(ranked.slice(0, 2).map((r) => r.skillCategory));
-  assert.equal(cats.size, 2);
+  const a = draft(100, { skillCategory: "help-recognition", teachingValue: 0.9 });
+  const b = draft(300, { skillCategory: "closeout-attack", teachingValue: 0.6 });
+  const ranked = dedupeAndRank([a, b]);
+  assert.equal(new Set(ranked.slice(0, 2).map((r) => r.skillCategory)).size, 2);
 });
 
 // --- schema ---------------------------------------------------------
@@ -193,8 +226,8 @@ test("possessionResultSchema accepts a minimal not-visible verdict", () => {
     situation: null,
     prompt: null,
     answerChoices: [],
-    bestReadChoiceId: null,
-    actualDecisionChoiceId: null,
+    bestReadIndex: null,
+    actualDecisionIndex: null,
     actualDecision: null,
     outcome: null,
     coachingExplanation: null,
@@ -223,8 +256,8 @@ test("possessionResultSchema rejects a confidence above 1", () => {
     situation: "x",
     prompt: "x",
     answerChoices: [],
-    bestReadChoiceId: null,
-    actualDecisionChoiceId: null,
+    bestReadIndex: null,
+    actualDecisionIndex: null,
     actualDecision: null,
     outcome: null,
     coachingExplanation: null,

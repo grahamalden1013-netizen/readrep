@@ -34,6 +34,21 @@ export const MIN_POSSESSION_WINDOW_SECONDS = 8;
 export const MAX_REASONING_CALLS = Number(process.env.OPENAI_MAX_REASONING_CALLS) || 20;
 /** A window that throws is retried this many times before it is `processing-failure`. */
 export const MAX_WINDOW_ATTEMPTS = 3;
+
+// --- Clip geometry: pre-decision context -----------------------------
+/** Hard floor: a candidate needs at least this many seconds of setup before the pause. */
+export const MIN_PRE_DECISION_SECONDS = 2.0;
+/** Aim for this much lead when the source video allows it (3-5 s band). */
+export const PREFERRED_PRE_DECISION_SECONDS = 5.0;
+/** Room the clip must keep after the pause to show the outcome. */
+export const MIN_POST_DECISION_SECONDS = 2.0;
+
+// --- Duplicate merging ---------------------------------------------
+/** Two decision points closer than this are candidate duplicates (then checked further). */
+export const DUPLICATE_DECISION_GAP_SECONDS = 8;
+
+/** Server-assigned choice ids, by position. The model never invents ids. */
+export const CHOICE_LETTERS = ["A", "B", "C", "D"] as const;
 /** Frames sent per possession to the reasoning model. */
 export const POSSESSION_FRAMES = 14;
 export const POSSESSION_FRAME_WIDTH = 852;

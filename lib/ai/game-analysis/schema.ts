@@ -25,11 +25,12 @@ export const possessionResultSchema = z.object({
   difficulty: z.enum(["easy", "medium", "hard"]).nullable(),
   situation: z.string().trim().min(3).max(800).nullable(),
   prompt: z.string().trim().min(3).max(600).nullable(),
-  answerChoices: z
-    .array(z.object({ id: z.string().min(1).max(8), text: z.string().trim().min(3).max(200) }))
-    .max(4),
-  bestReadChoiceId: z.string().min(1).max(8).nullable(),
-  actualDecisionChoiceId: z.string().min(1).max(8).nullable(),
+  /** An ORDERED list of choice text. Ids are assigned server-side (A, B, C, D). */
+  answerChoices: z.array(z.object({ text: z.string().trim().min(3).max(200) })).max(4),
+  /** 0-based position of the best read within answerChoices. */
+  bestReadIndex: z.number().int().min(0).max(3).nullable(),
+  /** 0-based position of what the player actually did, or null. */
+  actualDecisionIndex: z.number().int().min(0).max(3).nullable(),
   actualDecision: z.string().trim().max(600).nullable(),
   outcome: z.string().trim().max(600).nullable(),
   coachingExplanation: z.string().trim().max(2000).nullable(),
@@ -69,8 +70,8 @@ export const POSSESSION_JSON_SCHEMA = {
     "situation",
     "prompt",
     "answerChoices",
-    "bestReadChoiceId",
-    "actualDecisionChoiceId",
+    "bestReadIndex",
+    "actualDecisionIndex",
     "actualDecision",
     "outcome",
     "coachingExplanation",
@@ -103,12 +104,12 @@ export const POSSESSION_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "text"],
-        properties: { id: { type: "string" }, text: { type: "string" } },
+        required: ["text"],
+        properties: { text: { type: "string" } },
       },
     },
-    bestReadChoiceId: { type: ["string", "null"] },
-    actualDecisionChoiceId: { type: ["string", "null"] },
+    bestReadIndex: { type: ["integer", "null"], minimum: 0, maximum: 3 },
+    actualDecisionIndex: { type: ["integer", "null"], minimum: 0, maximum: 3 },
     actualDecision: { type: ["string", "null"] },
     outcome: { type: ["string", "null"] },
     coachingExplanation: { type: ["string", "null"] },

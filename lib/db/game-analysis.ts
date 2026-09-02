@@ -274,8 +274,37 @@ export type CandidateRepRow = {
 const CAND_SELECT =
   "id, analysis_job_id, game_id, clip_start_seconds, decision_seconds, clip_end_seconds, title, skill_category, difficulty, situation, prompt, answer_choices, best_read_choice_id, actual_decision_choice_id, actual_decision, outcome, coaching_explanation, visible_evidence, basketball_inferences, coach_preference_basis, involvement, uncertainty, player_identification_confidence, decision_confidence, teaching_value_score, rank, status, rejection_reason, published_rep_id, target_jersey_number, target_team_color";
 
+const CHOICE_LETTERS = ["A", "B", "C", "D"];
+
+/**
+ * Read-time migration: older drafts stored model-invented choice ids (which
+ * could exceed 8 chars). Re-key them to A/B/C/D by position and remap the
+ * best-read / actual-decision pointers, so the review UI and re-ranking always
+ * see clean ids regardless of when the row was written.
+ */
+function normalizeChoices(raw: unknown, bestId: unknown, actualId: unknown) {
+  const list: { id: string; text: string }[] = Array.isArray(raw)
+    ? raw.filter((c) => c && typeof c.text === "string").map((c) => ({ id: String(c.id ?? ""), text: c.text }))
+    : [];
+  const alreadyClean = list.every((c, i) => c.id === CHOICE_LETTERS[i]);
+  if (alreadyClean) {
+    return {
+      answerChoices: list,
+      bestReadChoiceId: typeof bestId === "string" ? bestId : null,
+      actualDecisionChoiceId: typeof actualId === "string" ? actualId : null,
+    };
+  }
+  const oldToNew = new Map(list.map((c, i) => [c.id, CHOICE_LETTERS[i]]));
+  return {
+    answerChoices: list.map((c, i) => ({ id: CHOICE_LETTERS[i], text: c.text })),
+    bestReadChoiceId: (typeof bestId === "string" && oldToNew.get(bestId)) || null,
+    actualDecisionChoiceId: (typeof actualId === "string" && oldToNew.get(actualId)) || null,
+  };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function toCandidate(row: any): CandidateRepRow {
+  const choices = normalizeChoices(row.answer_choices, row.best_read_choice_id, row.actual_decision_choice_id);
   return {
     id: row.id,
     analysisJobId: row.analysis_job_id,
@@ -288,9 +317,9 @@ function toCandidate(row: any): CandidateRepRow {
     difficulty: row.difficulty,
     situation: row.situation,
     prompt: row.prompt,
-    answerChoices: Array.isArray(row.answer_choices) ? row.answer_choices : [],
-    bestReadChoiceId: row.best_read_choice_id,
-    actualDecisionChoiceId: row.actual_decision_choice_id,
+    answerChoices: choices.answerChoices,
+    bestReadChoiceId: choices.bestReadChoiceId,
+    actualDecisionChoiceId: choices.actualDecisionChoiceId,
     actualDecision: row.actual_decision,
     outcome: row.outcome,
     coachingExplanation: row.coaching_explanation,

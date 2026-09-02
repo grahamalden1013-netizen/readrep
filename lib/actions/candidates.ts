@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getBackend } from "@/lib/db";
 import { candidateReps, gameAnalysisJobs, type CandidateRepRow } from "@/lib/db/game-analysis";
 import { validateRepDraft } from "@/lib/reps/draft";
+import { MIN_POST_DECISION_SECONDS, MIN_PRE_DECISION_SECONDS } from "@/lib/ai/game-analysis/limits";
 import { SKILL_CATEGORIES, type Rep } from "@/lib/reps/schema";
 import { getGame } from "@/lib/store";
 import { getVideoDurationMs } from "@/lib/video/playback";
@@ -14,6 +15,18 @@ import { requireOwnerWhenSupabase, withAuthedAction } from "./guard";
 import type { ActionResult } from "./result";
 
 const idSchema = z.string().min(1).max(64);
+
+/**
+ * The pre/post-decision context invariant. Checked at every gate: the model's
+ * own validation, coach approval, coach edit, and session publish. Returns a
+ * short reason code, or null when the clip is fine.
+ */
+function clipContextIssue(start: number, decision: number, end: number): string | null {
+  if (!(start < decision && decision < end)) return "clip-timing-out-of-order";
+  if (decision - start < MIN_PRE_DECISION_SECONDS) return "insufficient-pre-decision-context";
+  if (end - decision < MIN_POST_DECISION_SECONDS) return "insufficient-post-decision-footage";
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Review views. This is the COACH — the recommended answer is theirs to see.
@@ -115,6 +128,20 @@ export async function approveCandidate(candidateId: string): Promise<ActionResul
     if (!id.success) return { ok: false, error: "That moment could not be found." };
     const row = await candidateReps.get(id.data);
     if (!row) return { ok: false, error: "That moment could not be found." };
+
+    const issue = clipContextIssue(row.clipStartSeconds, row.decisionSeconds, row.clipEndSeconds);
+    if (issue) {
+      await candidateReps.update(id.data, { status: "needs_attention", rejection_reason: issue });
+      revalidatePath(`/games/${row.gameId}/review`);
+      return {
+        ok: false,
+        error:
+          issue === "insufficient-pre-decision-context"
+            ? "This moment doesn't show enough before the decision. Edit its timing (earlier start) before approving."
+            : "This moment's clip timing needs an edit before it can be approved.",
+      };
+    }
+
     await candidateReps.update(id.data, { status: "approved", rejection_reason: null });
     revalidatePath(`/games/${row.gameId}/review`);
     return { ok: true, data: null };
@@ -166,8 +193,17 @@ export async function editCandidate(input: z.input<typeof editSchema>): Promise<
     const row = await candidateReps.get(data.candidateId);
     if (!row) return { ok: false, error: "That moment could not be found." };
 
-    if (data.clip && !(data.clip.startSeconds < data.clip.decisionSeconds && data.clip.decisionSeconds < data.clip.endSeconds)) {
-      return { ok: false, error: "The clip timing is out of order." };
+    // Re-check the pre/post-decision context on whatever timing will be saved.
+    const timing = data.clip
+      ? { start: data.clip.startSeconds, decision: data.clip.decisionSeconds, end: data.clip.endSeconds }
+      : { start: row.clipStartSeconds, decision: row.decisionSeconds, end: row.clipEndSeconds };
+    const issue = clipContextIssue(timing.start, timing.decision, timing.end);
+    if (issue === "clip-timing-out-of-order") return { ok: false, error: "The clip timing is out of order." };
+    if (issue === "insufficient-pre-decision-context") {
+      return { ok: false, error: `Keep at least ${MIN_PRE_DECISION_SECONDS}s between the clip start and the decision.` };
+    }
+    if (issue === "insufficient-post-decision-footage") {
+      return { ok: false, error: `Keep at least ${MIN_POST_DECISION_SECONDS}s of footage after the decision.` };
     }
     const choices = data.choices ?? row.answerChoices;
     const recommended = data.recommendedChoiceId ?? row.bestReadChoiceId;
@@ -285,6 +321,13 @@ export async function buildSessionFromApproved(
     let published = 0;
     let skipped = 0;
     for (const row of rows) {
+      // Final gate: the pre/post-decision context invariant, before publishing.
+      const contextIssue = clipContextIssue(row.clipStartSeconds, row.decisionSeconds, row.clipEndSeconds);
+      if (contextIssue) {
+        skipped += 1;
+        await candidateReps.update(row.id, { status: "needs_attention", rejection_reason: contextIssue });
+        continue;
+      }
       const rep = candidateToRep(row, order);
       const issues = validateRepDraft(rep, durationMs);
       if (issues.length > 0) {
