@@ -1,0 +1,66 @@
+{
+  "note": "Regression fixture — the 21:01 clip (window 67). The strict v2 gate MUST reject this as no-meaningful-decision.",
+  "capturedAt": "2026-09-02T03:07:14.666Z",
+  "window": {
+    "startSeconds": 1250,
+    "endSeconds": 1268
+  },
+  "gateKind": "rejected",
+  "gateReason": "no-meaningful-decision",
+  "modelResponse": {
+    "targetVisible": true,
+    "targetConfidence": 0.93,
+    "targetEvidence": [
+      {
+        "timestampSeconds": 1260.74,
+        "observation": "White #15 is visibly identifiable in the half-court baseline set, positioned near the right side of the lane."
+      },
+      {
+        "timestampSeconds": 1262.22,
+        "observation": "The same white #15 remains visible around the right low-post/lane area as players await the restart."
+      }
+    ],
+    "possessionSummary": "The window is dominated by a stoppage and dead-ball setup. White #15 is shown during the baseline inbounds formation; the ball is then inbounded from the right baseline and the offense begins moving toward the paint, but the target's individual action is not clearly trackable through the final sequence.",
+    "targetInvolvement": "off-ball-offense",
+    "decision": false,
+    "noDecisionReason": "no-meaningful-decision",
+    "decisionOffsetSeconds": null,
+    "decisionConfidence": 0.91,
+    "actualAction": null,
+    "visibleOutcome": null,
+    "plausibleAlternatives": [],
+    "whyThisIsNotRoutine": null,
+    "whyThePauseIsBeforeCommitment": null,
+    "title": null,
+    "skillCategory": null,
+    "difficulty": null,
+    "situation": null,
+    "prompt": null,
+    "answerChoices": [],
+    "bestReadIndex": null,
+    "actualDecisionIndex": null,
+    "coachingExplanation": null,
+    "basketballInferences": [
+      {
+        "statement": "White #15 appears to be part of the offensive baseline-inbounds alignment before the ball is put in play.",
+        "confidence": 0.82
+      },
+      {
+        "statement": "The late movement near the basket may include an off-ball screening or cutting action, but the target cannot be distinguished confidently enough to label the action or assess a real alternative.",
+        "confidence": 0.42
+      }
+    ],
+    "coachPreferenceBasis": [],
+    "decisionTags": [],
+    "uncertainty": [
+      "Most of the window is a timeout/dead-ball sequence rather than live possession action.",
+      "The target is identifiable in the inbounds setup, but visual continuity through the congested live action is insufficient to determine whether he screens, cuts, receives, or makes another commitment.",
+      "The ball's final outcome is not visible clearly enough to connect it to an action by White #15."
+    ],
+    "warnings": [
+      "Do not create a rep from the target merely being stationed in the lane during an inbound set.",
+      "The available frames do not establish two visible, meaningful alternatives immediately before a clearly attributable commitment by the target."
+    ],
+    "teachingValue": 0.08
+  }
+}

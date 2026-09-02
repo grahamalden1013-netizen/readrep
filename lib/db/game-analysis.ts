@@ -274,6 +274,12 @@ export type CandidateRepRow = {
   reviewDecisionVerdict: "real" | "not-meaningful" | null;
   reviewBadPause: boolean;
   reviewNotes: string | null;
+  // --- strict-decision (prompt v2) evidence ---
+  possessionSummary: string | null;
+  actualAction: string | null;
+  plausibleAlternatives: { action: string; visibleEvidence: string }[];
+  whyThisIsNotRoutine: string | null;
+  whyThePauseIsBeforeCommitment: string | null;
 };
 
 export type CandidateReviewEval = {
@@ -284,7 +290,7 @@ export type CandidateReviewEval = {
 };
 
 const CAND_SELECT =
-  "id, analysis_job_id, game_id, clip_start_seconds, decision_seconds, clip_end_seconds, title, skill_category, difficulty, situation, prompt, answer_choices, best_read_choice_id, actual_decision_choice_id, actual_decision, outcome, coaching_explanation, visible_evidence, basketball_inferences, coach_preference_basis, involvement, uncertainty, player_identification_confidence, decision_confidence, teaching_value_score, rank, status, rejection_reason, published_rep_id, target_jersey_number, target_team_color, review_player_verdict, review_decision_verdict, review_bad_pause, review_notes";
+  "id, analysis_job_id, game_id, clip_start_seconds, decision_seconds, clip_end_seconds, title, skill_category, difficulty, situation, prompt, answer_choices, best_read_choice_id, actual_decision_choice_id, actual_decision, outcome, coaching_explanation, visible_evidence, basketball_inferences, coach_preference_basis, involvement, uncertainty, player_identification_confidence, decision_confidence, teaching_value_score, rank, status, rejection_reason, published_rep_id, target_jersey_number, target_team_color, review_player_verdict, review_decision_verdict, review_bad_pause, review_notes, possession_summary, actual_action, plausible_alternatives, why_not_routine, why_pause_before_commit";
 
 const CHOICE_LETTERS = ["A", "B", "C", "D"];
 
@@ -353,6 +359,11 @@ function toCandidate(row: any): CandidateRepRow {
     reviewDecisionVerdict: row.review_decision_verdict ?? null,
     reviewBadPause: row.review_bad_pause ?? false,
     reviewNotes: row.review_notes ?? null,
+    possessionSummary: row.possession_summary ?? null,
+    actualAction: row.actual_action ?? null,
+    plausibleAlternatives: Array.isArray(row.plausible_alternatives) ? row.plausible_alternatives : [],
+    whyThisIsNotRoutine: row.why_not_routine ?? null,
+    whyThePauseIsBeforeCommitment: row.why_pause_before_commit ?? null,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

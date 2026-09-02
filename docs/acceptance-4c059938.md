@@ -163,6 +163,40 @@ Every entry now has 7.0 s of pre-decision context. The pipeline still needs a
 manual film check for identification accuracy and candidate quality — **not
 accepted on those axes.**
 
+## Strict decision gate (prompt v2) — rescore, 2026-09-01
+
+Decision discovery was rebuilt around the strict definition (see
+`docs/full-game-analysis.md`). The nine repaired candidates were **rescored
+without changing their window timestamps** (`scripts/rescore-9.ts`, 9 model
+calls, ~$0.25).
+
+**Survivors: 0 / 9.** Under prompt v2 the model returned `decision: false` for
+every one; the deterministic gate then rejected them:
+
+| # | window | v2 outcome |
+| --- | --- | --- |
+| 1 | 67 (21:01) | `no-meaningful-decision` — dead-ball inbounds setup, no live read |
+| 2 | 24 (8:01) | `no-meaningful-decision` — model returned decision:false |
+| 3 | 33 (9:59) | `no-meaningful-decision` |
+| 4 | 27 (8:42) | `no-meaningful-decision` |
+| 5 | 71 (21:55) | `target-not-visible` |
+| 6 | 47 (14:23) | `target-not-confidently-identified` |
+| 7 | 83 (25:57) | `no-meaningful-decision` — routine action |
+| 8 | 35 (10:28) | `no-meaningful-decision` — target not materially involved |
+| 9 | 48 (14:42) | `no-meaningful-decision` |
+
+The nine seeded rows are now `status = rejected` with these reasons; the review
+page shows nothing to review and lists all nine as rejected.
+
+**Regression fixture:** `test/fixtures/decision-21-01-response.json` is the real
+captured v2 model response for window 67. `test/decision-gate-regression.test.ts`
+asserts it parses and is rejected as `no-meaningful-decision` and never yields a
+draft.
+
+This confirms the reviewer's assessment: the v1 candidates were generic-
+positioning false positives. The 130-window game has **not** been re-run under
+v2 yet.
+
 ## Baseline conclusions (do not "fix" before this is agreed)
 
 - Coverage, resumability, exactly-once, terminal-state accounting, and the

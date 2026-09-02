@@ -23,7 +23,9 @@ export type WindowLedgerEntry = {
 };
 
 const NO_DECISION_REASONS = new Set([
-  "no-decision",
+  "no-meaningful-decision",
+  "outcome-not-visible",
+  "no-decision", // legacy
   "insufficient-pre-decision-context",
   "bad-timing",
   "no-outcome-room",
@@ -36,8 +38,9 @@ const NO_DECISION_REASONS = new Set([
 export function classifyOutcome(r: AnalyzedPossession): { outcome: WindowOutcome; reason: string } {
   if (r.kind === "candidate") return { outcome: "valid-decision", reason: "candidate" };
   if (r.kind === "flagged") return { outcome: "valid-decision", reason: `flagged: ${r.reason}` };
-  if (r.reason === "target-not-visible") return { outcome: "target-not-visible", reason: "not visible" };
-  if (r.reason === "low-identification") return { outcome: "target-not-visible", reason: r.detail || "low id confidence" };
+  if (r.reason === "target-not-visible" || r.reason === "low-identification") {
+    return { outcome: "target-not-visible", reason: r.detail || "not visible" };
+  }
   if (r.reason === "invalid-output") return { outcome: "invalid-output", reason: r.detail || "invalid output" };
   if (r.reason === "frames-unavailable") return { outcome: "processing-failure", reason: r.detail || "frames unavailable" };
   if (NO_DECISION_REASONS.has(r.reason)) return { outcome: "target-no-decision", reason: r.reason };

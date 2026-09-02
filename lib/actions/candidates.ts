@@ -54,6 +54,11 @@ export type CandidateReviewView = {
   explanation: string | null;
   why: {
     involvement: string | null;
+    possessionSummary: string | null;
+    actualAction: string | null;
+    plausibleAlternatives: { action: string; visibleEvidence: string }[];
+    whyNotRoutine: string | null;
+    whyPauseBeforeCommitment: string | null;
     evidence: { timestampSeconds: number; observation: string }[];
     inferences: { statement: string; confidence: number }[];
     coachPreferences: { questionId: string; influence: string }[];
@@ -95,6 +100,11 @@ function toReviewView(row: CandidateRepRow, jobId: string): CandidateReviewView 
     explanation: row.coachingExplanation,
     why: {
       involvement: row.involvement,
+      possessionSummary: row.possessionSummary,
+      actualAction: row.actualAction,
+      plausibleAlternatives: row.plausibleAlternatives,
+      whyNotRoutine: row.whyThisIsNotRoutine,
+      whyPauseBeforeCommitment: row.whyThePauseIsBeforeCommitment,
       evidence: row.visibleEvidence,
       inferences: row.basketballInferences,
       coachPreferences: row.coachPreferenceBasis,

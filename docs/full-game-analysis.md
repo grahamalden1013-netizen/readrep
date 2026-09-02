@@ -77,7 +77,23 @@ Mux thumbnails ──► Stage A  live/dead filter        (cheap model, low-res 
   windows overlapping by `POSSESSION_WINDOW_OVERLAP_SECONDS`, so a decision has
   alignment → development → decision → action → outcome context on both sides.
   Windows below `MIN_POSSESSION_WINDOW_SECONDS` are dropped.
-- **Stage C/D/E — `possession.ts` + `prompt.ts` + `schema.ts`.** For each window
+> **Prompt v2 (`game-analysis-v2`).** Decision discovery was rebuilt around a
+> strict definition: a valid moment needs a confidently-identified, materially
+> involved target who, at a precise instant, faces **≥ 2 plausible actions each
+> supported by VISIBLE court geometry** (not generic basketball knowledge),
+> commits to one, and whose action + immediate outcome are visible after the
+> pause. The model is told `decision: false` is the expected answer for routine
+> basketball and must never infer a decision from a catch or manufacture weak
+> choices. The deterministic gate lives in **`gate.ts`**
+> (`evaluatePossessionResult`, unit-tested against
+> `test/fixtures/decision-21-01-response.json`); rejections carry
+> `no-meaningful-decision` / `outcome-not-visible` / `target-not-visible` /
+> `insufficient-pre-decision-context`. New per-candidate fields:
+> `possessionSummary`, `actualAction`, `plausibleAlternatives` +
+> `visibleEvidenceForEachAlternative`, `whyThisIsNotRoutine`,
+> `whyThePauseIsBeforeCommitment` (migration `0005`).
+
+- **Stage C/D/E — `possession.ts` + `prompt.ts` + `schema.ts` + `gate.ts`.** For each window
   (up to `MAX_REASONING_CALLS`), send `POSSESSION_FRAMES` chronological frames
   plus the coach-confirmed reference frames to the reasoning model. The rubric:
   1. Identify the target using team colour + jersey (when legible) + reference

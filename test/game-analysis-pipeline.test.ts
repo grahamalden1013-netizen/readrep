@@ -16,6 +16,7 @@ import { dedupeAndRank } from "@/lib/ai/game-analysis/rank";
 import { mergeDuplicates } from "@/lib/ai/game-analysis/merge";
 import type { CandidateDraft } from "@/lib/ai/game-analysis/possession";
 import { possessionResultSchema } from "@/lib/ai/game-analysis/schema";
+import { evaluatePossessionResult } from "@/lib/ai/game-analysis/gate";
 import { buildPossessionPrompt } from "@/lib/ai/game-analysis/prompt";
 import {
   confirmedReferenceSchema,
@@ -141,6 +142,19 @@ function draft(decisionSeconds: number, over: Partial<CandidateDraft> = {}): Can
     teachingValue: 0.7,
     decisionTags: ["drive-help"],
     warnings: [],
+    targetEvidence: [
+      { timestampSeconds: decisionSeconds - 4, observation: "target drives middle" },
+      { timestampSeconds: decisionSeconds - 1, observation: "low man leaves the corner" },
+    ],
+    possessionSummary: "White #15 drives middle out of a ball screen.",
+    actualAction: "drive",
+    visibleOutcome: "Blocked at the rim",
+    plausibleAlternatives: [
+      { action: "finish", visibleEvidence: "lane briefly open" },
+      { action: "kick to corner", visibleEvidence: "low man has left the corner" },
+    ],
+    whyThisIsNotRoutine: "The low man fully commits, opening a specific kick-out.",
+    whyThePauseIsBeforeCommitment: "Frame is one gather before the shot goes up.",
     ...over,
   };
 }
@@ -212,64 +226,148 @@ test("dedupeAndRank puts a different skill category in the first two", () => {
 
 // --- schema ---------------------------------------------------------
 
-test("possessionResultSchema accepts a minimal not-visible verdict", () => {
-  const parsed = possessionResultSchema.safeParse({
-    targetVisible: false,
-    targetIdentificationConfidence: 0.2,
-    involvement: null,
-    hasDecision: false,
-    decisionOffsetSeconds: null,
-    decisionConfidence: 0,
-    title: null,
-    skillCategory: null,
-    difficulty: null,
-    situation: null,
-    prompt: null,
-    answerChoices: [],
-    bestReadIndex: null,
-    actualDecisionIndex: null,
-    actualDecision: null,
-    outcome: null,
-    coachingExplanation: null,
-    visibleEvidence: [],
+/** A well-formed v2 model verdict; override any field. */
+function modelResult(over: Record<string, unknown> = {}) {
+  return {
+    targetVisible: true,
+    targetConfidence: 0.9,
+    targetEvidence: [
+      { timestampSeconds: 303, observation: "white #15 catches on the left wing" },
+      { timestampSeconds: 306, observation: "white #15 begins a live dribble middle" },
+    ],
+    possessionSummary: "White #15 attacks a middle drive; the low man commits.",
+    targetInvolvement: "on-ball-offense",
+    decision: true,
+    noDecisionReason: null,
+    decisionOffsetSeconds: 6,
+    decisionConfidence: 0.7,
+    actualAction: "drive",
+    visibleOutcome: "Drive reaches the rim; low man rotates over and the shot is blocked.",
+    plausibleAlternatives: [
+      { action: "finish at the rim", visibleEvidence: "lane is briefly open at t=305" },
+      { action: "kick to the left corner", visibleEvidence: "the low man has left the corner shooter at t=306" },
+    ],
+    whyThisIsNotRoutine: "The low man fully commits, creating a specific advantage that must be read.",
+    whyThePauseIsBeforeCommitment: "The pause is one gather before #15 leaves his feet.",
+    title: "Read the committed low man",
+    skillCategory: "help-recognition",
+    difficulty: "medium",
+    situation: "Middle drive, the low defender steps up.",
+    prompt: "The low man commits — what is the best read?",
+    answerChoices: [{ text: "Finish through the help" }, { text: "Kick to the open left corner" }],
+    bestReadIndex: 1,
+    actualDecisionIndex: 0,
+    coachingExplanation: "Once the low man fully commits, the corner is the higher-value read.",
     basketballInferences: [],
     coachPreferenceBasis: [],
-    decisionTags: [],
+    decisionTags: ["drive-help"],
     uncertainty: [],
     warnings: [],
-    teachingValue: 0,
-  });
+    teachingValue: 0.7,
+    ...over,
+  };
+}
+
+test("possessionResultSchema accepts a decision:false verdict with nulls", () => {
+  const parsed = possessionResultSchema.safeParse(
+    modelResult({
+      decision: false,
+      noDecisionReason: "no-meaningful-decision",
+      decisionOffsetSeconds: null,
+      actualAction: null,
+      visibleOutcome: null,
+      plausibleAlternatives: [],
+      whyThisIsNotRoutine: null,
+      whyThePauseIsBeforeCommitment: null,
+      title: null,
+      situation: null,
+      prompt: null,
+      coachingExplanation: null,
+      answerChoices: [],
+      bestReadIndex: null,
+      actualDecisionIndex: null,
+    }),
+  );
   assert.ok(parsed.success);
 });
 
 test("possessionResultSchema rejects a confidence above 1", () => {
-  const parsed = possessionResultSchema.safeParse({
-    targetVisible: true,
-    targetIdentificationConfidence: 1.4,
-    involvement: "driver",
-    hasDecision: true,
-    decisionOffsetSeconds: 4,
-    decisionConfidence: 0.5,
-    title: "x",
-    skillCategory: null,
-    difficulty: null,
-    situation: "x",
-    prompt: "x",
-    answerChoices: [],
-    bestReadIndex: null,
-    actualDecisionIndex: null,
-    actualDecision: null,
-    outcome: null,
-    coachingExplanation: null,
-    visibleEvidence: [],
-    basketballInferences: [],
-    coachPreferenceBasis: [],
-    decisionTags: [],
-    uncertainty: [],
-    warnings: [],
-    teachingValue: 0,
-  });
+  const parsed = possessionResultSchema.safeParse(modelResult({ targetConfidence: 1.4 }));
   assert.equal(parsed.success, false);
+});
+
+// --- the decision gate ------------------------------------------
+
+const WIN = { startSeconds: 300, endSeconds: 318 };
+
+test("gate rejects a decision:false verdict as no-meaningful-decision", () => {
+  const r = possessionResultSchema.parse(
+    modelResult({ decision: false, noDecisionReason: "routine catch", decisionOffsetSeconds: null }),
+  );
+  const g = evaluatePossessionResult(r, WIN);
+  assert.equal(g.kind, "rejected");
+  assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
+});
+
+test("gate rejects when fewer than two alternatives have visible evidence", () => {
+  const r = possessionResultSchema.parse(
+    modelResult({ plausibleAlternatives: [{ action: "finish", visibleEvidence: "lane open" }] }),
+  );
+  const g = evaluatePossessionResult(r, WIN);
+  assert.equal(g.kind, "rejected");
+  assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
+});
+
+test("schema requires visible evidence text for every alternative", () => {
+  const parsed = possessionResultSchema.safeParse(
+    modelResult({
+      plausibleAlternatives: [
+        { action: "finish", visibleEvidence: "lane open" },
+        { action: "kick", visibleEvidence: "  " },
+      ],
+    }),
+  );
+  assert.equal(parsed.success, false);
+});
+
+test("gate rejects when only one alternative survives the evidence check", () => {
+  // schema-valid, but the gate needs two alternatives with non-empty evidence
+  const r = possessionResultSchema.parse(
+    modelResult({ plausibleAlternatives: [{ action: "finish at the rim", visibleEvidence: "lane is open" }] }),
+  );
+  const g = evaluatePossessionResult(r, WIN);
+  assert.equal(g.kind, "rejected");
+  assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
+});
+
+test("gate rejects a pause on the first frames as insufficient-pre-decision-context", () => {
+  const r = possessionResultSchema.parse(modelResult({ decisionOffsetSeconds: 0.5 }));
+  const g = evaluatePossessionResult(r, WIN);
+  assert.equal(g.kind, "rejected");
+  assert.equal((g as { reason: string }).reason, "insufficient-pre-decision-context");
+});
+
+test("gate rejects when the target is not materially involved", () => {
+  const r = possessionResultSchema.parse(modelResult({ targetInvolvement: "not-involved" }));
+  const g = evaluatePossessionResult(r, WIN);
+  assert.equal(g.kind, "rejected");
+  assert.equal((g as { reason: string }).reason, "no-meaningful-decision");
+});
+
+test("gate rejects when the model does not justify why the moment is not routine", () => {
+  const r = possessionResultSchema.parse(modelResult({ whyThisIsNotRoutine: "" }));
+  const g = evaluatePossessionResult(r, WIN);
+  assert.equal(g.kind, "rejected");
+});
+
+test("gate accepts a fully supported decision", () => {
+  const g = evaluatePossessionResult(possessionResultSchema.parse(modelResult()), WIN);
+  assert.notEqual(g.kind, "rejected");
+  if (g.kind === "rejected") return;
+  assert.equal(g.draft.answerChoices.map((c) => c.id).join(""), "AB");
+  assert.equal(g.draft.bestReadChoiceId, "B");
+  assert.equal(g.draft.plausibleAlternatives.length, 2);
+  assert.ok(g.draft.decisionSeconds > WIN.startSeconds && g.draft.decisionSeconds < WIN.endSeconds);
 });
 
 // --- prompt -------------------------------------------------------
@@ -288,8 +386,9 @@ test("buildPossessionPrompt lists supplied preferences and window frames", () =>
   assert.match(built.userIntro, /drive_help/);
   assert.match(built.userIntro, /t=300/);
   assert.match(built.userIntro, /white leg sleeves/);
-  assert.match(built.system, /NEVER attribute an observation from a different player/i);
-  assert.match(built.system, /do NOT rely on the jersey number alone/i);
+  assert.match(built.system, /decision:false is the correct, expected answer/i);
+  assert.match(built.system, /NEVER infer a decision solely from the target catching the ball/i);
+  assert.match(built.system, /VISIBLE court geometry/i);
 });
 
 test("buildPossessionPrompt says so when no preference applies and warns when number unconfirmed", () => {

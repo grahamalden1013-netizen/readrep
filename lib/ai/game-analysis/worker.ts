@@ -350,6 +350,13 @@ async function stepRank(job: GameAnalysisJob, cursor: Cursor): Promise<TickResul
       teachingValue: r.teachingValueScore ?? 0,
       decisionTags: [],
       warnings: [],
+      targetEvidence: r.visibleEvidence,
+      possessionSummary: r.possessionSummary ?? null,
+      actualAction: r.actualAction ?? r.actualDecision,
+      visibleOutcome: r.outcome,
+      plausibleAlternatives: r.plausibleAlternatives ?? [],
+      whyThisIsNotRoutine: r.whyThisIsNotRoutine ?? null,
+      whyThePauseIsBeforeCommitment: r.whyThePauseIsBeforeCommitment ?? null,
     }),
   );
 
@@ -453,6 +460,11 @@ function candidateRow(
     player_identification_confidence: d.playerIdConfidence,
     decision_confidence: d.decisionConfidence,
     teaching_value_score: d.teachingValue,
+    possession_summary: d.possessionSummary,
+    actual_action: d.actualAction,
+    plausible_alternatives: d.plausibleAlternatives,
+    why_not_routine: d.whyThisIsNotRoutine,
+    why_pause_before_commit: d.whyThePauseIsBeforeCommitment,
     dedupe_key: null,
     status,
   };

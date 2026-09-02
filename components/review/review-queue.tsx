@@ -343,10 +343,42 @@ export function ReviewQueue({
 
                   {showWhy ? (
                     <div className="flex flex-col gap-3 rounded-panel border border-line bg-raised p-3.5 text-[0.8125rem] text-fg-soft">
+                      {current.why.possessionSummary ? (
+                        <p>
+                          <span className="label-caps mr-2 text-fg-faint">Possession</span>
+                          {current.why.possessionSummary}
+                        </p>
+                      ) : null}
                       {current.why.involvement ? (
                         <p>
                           <span className="label-caps mr-2 text-fg-faint">Involvement</span>
                           {current.why.involvement}
+                          {current.why.actualAction ? ` · committed to: ${current.why.actualAction}` : ""}
+                        </p>
+                      ) : null}
+                      {current.why.plausibleAlternatives.length > 0 ? (
+                        <div>
+                          <p className="label-caps mb-1 text-fg-faint">Plausible alternatives &middot; visible evidence</p>
+                          <ul className="flex flex-col gap-1.5">
+                            {current.why.plausibleAlternatives.map((a, i) => (
+                              <li key={i}>
+                                <span className="font-medium text-fg">{a.action}</span>
+                                <span className="text-fg-faint"> — {a.visibleEvidence}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {current.why.whyNotRoutine ? (
+                        <p>
+                          <span className="label-caps mr-2 text-fg-faint">Not routine</span>
+                          {current.why.whyNotRoutine}
+                        </p>
+                      ) : null}
+                      {current.why.whyPauseBeforeCommitment ? (
+                        <p>
+                          <span className="label-caps mr-2 text-fg-faint">Pause is pre-commit</span>
+                          {current.why.whyPauseBeforeCommitment}
                         </p>
                       ) : null}
                       {current.why.evidence.length > 0 ? (

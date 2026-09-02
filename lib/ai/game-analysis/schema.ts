@@ -1,53 +1,88 @@
 import { z } from "zod";
 import { SKILL_CATEGORIES } from "@/lib/reps/schema";
 
-export const CANDIDATE_PROMPT_VERSION = "game-analysis-v1";
+export const CANDIDATE_PROMPT_VERSION = "game-analysis-v2";
 
 const confidence = z.number().min(0).max(1);
 
-/** The model's verdict for one possession window. */
-export const possessionResultSchema = z.object({
-  // --- identification of the target player in THIS window ---
-  targetVisible: z.boolean(),
-  targetIdentificationConfidence: confidence,
-  /** How the target player is involved, or why not. */
-  involvement: z.string().trim().max(600).nullable(),
+/** The observable commitment events a real decision resolves into. */
+export const DECISION_ACTIONS = [
+  "pass",
+  "shot",
+  "drive",
+  "attack-closeout",
+  "screen",
+  "roll-or-pop",
+  "cut-or-relocate",
+  "help-rotation",
+  "switch",
+  "closeout",
+  "tag",
+  "rebound-assignment",
+  "transition-assignment",
+] as const;
+export type DecisionAction = (typeof DECISION_ACTIONS)[number];
 
-  // --- is there a genuine decision, and when ---
-  hasDecision: z.boolean(),
-  /** Seconds from the START of the supplied window to the pause point. */
+/**
+ * The model's verdict for one possession window. A window either contains a
+ * genuine decision by the target — with visible support for two or more
+ * alternatives — or it does not (`decision: false`).
+ */
+export const possessionResultSchema = z.object({
+  // --- Stage 1: track the target -------------------------------------
+  targetVisible: z.boolean(),
+  targetConfidence: confidence,
+  /** Frames where the target is actually visible, with what identifies them. */
+  targetEvidence: z
+    .array(z.object({ timestampSeconds: z.number().nonnegative(), observation: z.string().trim().min(3).max(400) }))
+    .max(20),
+
+  // --- Stage 2: possession -----------------------------------------
+  possessionSummary: z.string().trim().max(800).nullable(),
+  targetInvolvement: z
+    .enum(["on-ball-offense", "off-ball-offense", "on-ball-defense", "off-ball-defense", "not-involved"])
+    .nullable(),
+
+  // --- Stages 3-5: is there a real decision -----------------------
+  decision: z.boolean(),
+  /** When decision=false: why not (routine, already-decided, too-early, too-late, not-involved, hypothetical, catch-only, forced-output). */
+  noDecisionReason: z.string().trim().max(400).nullable(),
+
   decisionOffsetSeconds: z.number().nonnegative().nullable(),
   decisionConfidence: confidence,
+  actualAction: z.enum(DECISION_ACTIONS).nullable(),
+  visibleOutcome: z.string().trim().max(600).nullable(),
+  plausibleAlternatives: z
+    .array(
+      z.object({
+        action: z.string().trim().min(3).max(120),
+        visibleEvidence: z.string().trim().min(3).max(400),
+      }),
+    )
+    .max(4),
+  whyThisIsNotRoutine: z.string().trim().max(600).nullable(),
+  whyThePauseIsBeforeCommitment: z.string().trim().max(600).nullable(),
 
-  // --- the draft rep (null unless targetVisible && hasDecision) ---
+  // --- Stage 6: the rep draft (only when decision=true) ---------
   title: z.string().trim().min(3).max(200).nullable(),
   skillCategory: z.enum(SKILL_CATEGORIES).nullable(),
   difficulty: z.enum(["easy", "medium", "hard"]).nullable(),
   situation: z.string().trim().min(3).max(800).nullable(),
   prompt: z.string().trim().min(3).max(600).nullable(),
-  /** An ORDERED list of choice text. Ids are assigned server-side (A, B, C, D). */
+  /** Ordered choice text; ids A/B/C/D are assigned server-side. */
   answerChoices: z.array(z.object({ text: z.string().trim().min(3).max(200) })).max(4),
-  /** 0-based position of the best read within answerChoices. */
   bestReadIndex: z.number().int().min(0).max(3).nullable(),
-  /** 0-based position of what the player actually did, or null. */
   actualDecisionIndex: z.number().int().min(0).max(3).nullable(),
-  actualDecision: z.string().trim().max(600).nullable(),
-  outcome: z.string().trim().max(600).nullable(),
   coachingExplanation: z.string().trim().max(2000).nullable(),
 
-  // --- separated reasoning ---
-  visibleEvidence: z
-    .array(z.object({ timestampSeconds: z.number().nonnegative(), observation: z.string().trim().min(3).max(600) }))
-    .max(20),
+  // --- separated reasoning ------------------------------------------
   basketballInferences: z.array(z.object({ statement: z.string().trim().min(3).max(600), confidence })).max(12),
-  /** Which supplied coach preferences the model actually used, and how. */
   coachPreferenceBasis: z
     .array(z.object({ questionId: z.string().max(64), influence: z.string().trim().min(3).max(400) }))
     .max(8),
   decisionTags: z.array(z.string().trim().max(40)).max(10),
   uncertainty: z.array(z.string().trim().min(2).max(600)).max(10),
   warnings: z.array(z.string().trim().min(2).max(600)).max(12),
-
   teachingValue: confidence,
 });
 
@@ -59,11 +94,19 @@ export const POSSESSION_JSON_SCHEMA = {
   additionalProperties: false,
   required: [
     "targetVisible",
-    "targetIdentificationConfidence",
-    "involvement",
-    "hasDecision",
+    "targetConfidence",
+    "targetEvidence",
+    "possessionSummary",
+    "targetInvolvement",
+    "decision",
+    "noDecisionReason",
     "decisionOffsetSeconds",
     "decisionConfidence",
+    "actualAction",
+    "visibleOutcome",
+    "plausibleAlternatives",
+    "whyThisIsNotRoutine",
+    "whyThePauseIsBeforeCommitment",
     "title",
     "skillCategory",
     "difficulty",
@@ -72,10 +115,7 @@ export const POSSESSION_JSON_SCHEMA = {
     "answerChoices",
     "bestReadIndex",
     "actualDecisionIndex",
-    "actualDecision",
-    "outcome",
     "coachingExplanation",
-    "visibleEvidence",
     "basketballInferences",
     "coachPreferenceBasis",
     "decisionTags",
@@ -85,16 +125,42 @@ export const POSSESSION_JSON_SCHEMA = {
   ],
   properties: {
     targetVisible: { type: "boolean" },
-    targetIdentificationConfidence: { type: "number", minimum: 0, maximum: 1 },
-    involvement: { type: ["string", "null"] },
-    hasDecision: { type: "boolean" },
+    targetConfidence: { type: "number", minimum: 0, maximum: 1 },
+    targetEvidence: {
+      type: "array",
+      maxItems: 20,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["timestampSeconds", "observation"],
+        properties: { timestampSeconds: { type: "number" }, observation: { type: "string" } },
+      },
+    },
+    possessionSummary: { type: ["string", "null"] },
+    targetInvolvement: {
+      type: ["string", "null"],
+      enum: ["on-ball-offense", "off-ball-offense", "on-ball-defense", "off-ball-defense", "not-involved", null],
+    },
+    decision: { type: "boolean" },
+    noDecisionReason: { type: ["string", "null"] },
     decisionOffsetSeconds: { type: ["number", "null"], minimum: 0 },
     decisionConfidence: { type: "number", minimum: 0, maximum: 1 },
-    title: { type: ["string", "null"] },
-    skillCategory: {
-      type: ["string", "null"],
-      enum: [...SKILL_CATEGORIES, null],
+    actualAction: { type: ["string", "null"], enum: [...DECISION_ACTIONS, null] },
+    visibleOutcome: { type: ["string", "null"] },
+    plausibleAlternatives: {
+      type: "array",
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["action", "visibleEvidence"],
+        properties: { action: { type: "string" }, visibleEvidence: { type: "string" } },
+      },
     },
+    whyThisIsNotRoutine: { type: ["string", "null"] },
+    whyThePauseIsBeforeCommitment: { type: ["string", "null"] },
+    title: { type: ["string", "null"] },
+    skillCategory: { type: ["string", "null"], enum: [...SKILL_CATEGORIES, null] },
     difficulty: { type: ["string", "null"], enum: ["easy", "medium", "hard", null] },
     situation: { type: ["string", "null"] },
     prompt: { type: ["string", "null"] },
@@ -110,19 +176,7 @@ export const POSSESSION_JSON_SCHEMA = {
     },
     bestReadIndex: { type: ["integer", "null"], minimum: 0, maximum: 3 },
     actualDecisionIndex: { type: ["integer", "null"], minimum: 0, maximum: 3 },
-    actualDecision: { type: ["string", "null"] },
-    outcome: { type: ["string", "null"] },
     coachingExplanation: { type: ["string", "null"] },
-    visibleEvidence: {
-      type: "array",
-      maxItems: 20,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["timestampSeconds", "observation"],
-        properties: { timestampSeconds: { type: "number" }, observation: { type: "string" } },
-      },
-    },
     basketballInferences: {
       type: "array",
       maxItems: 12,

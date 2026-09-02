@@ -6,60 +6,21 @@ import { DEFAULT_REP_MODEL, PROVIDER_TIMEOUT_MS } from "@/lib/ai/limits";
 import { fetchMuxFrame } from "@/lib/video/mux-frame-source";
 import type { CoachingProfile } from "@/lib/coaching/profile";
 import { relevantPreferences, type DecisionTag } from "@/lib/coaching/profile";
-import {
-  CANDIDATE_DECISION_CONFIDENCE_MIN,
-  CANDIDATE_ID_CONFIDENCE_MIN,
-  CHOICE_LETTERS,
-  MIN_POST_DECISION_SECONDS,
-  MIN_PRE_DECISION_SECONDS,
-  POSSESSION_FRAMES,
-  POSSESSION_FRAME_WIDTH,
-  PREFERRED_PRE_DECISION_SECONDS,
-} from "./limits";
+import { POSSESSION_FRAMES, POSSESSION_FRAME_WIDTH } from "./limits";
 import { buildPossessionPrompt } from "./prompt";
-import {
-  possessionResultSchema,
-  POSSESSION_JSON_SCHEMA,
-  CANDIDATE_PROMPT_VERSION,
-  type PossessionResult,
-} from "./schema";
+import { evaluatePossessionResult, type CandidateDraft, type GateResult } from "./gate";
+import { possessionResultSchema, POSSESSION_JSON_SCHEMA, CANDIDATE_PROMPT_VERSION, type PossessionResult } from "./schema";
 
+export type { CandidateDraft } from "./gate";
 export type Target = { jerseyNumber: string; teamColor: string; marker: string | null };
 export type ReferenceFrame = { timestampSeconds: number; dataUrl: string };
+
+type Usage = { input: number; output: number };
 
 export type AnalyzedPossession =
   | { kind: "candidate"; draft: CandidateDraft; usage: Usage; model: string }
   | { kind: "rejected"; reason: string; detail: string; usage: Usage; model: string }
   | { kind: "flagged"; draft: CandidateDraft; reason: string; usage: Usage; model: string };
-
-type Usage = { input: number; output: number };
-
-export type CandidateDraft = {
-  clipStartSeconds: number;
-  decisionSeconds: number;
-  clipEndSeconds: number;
-  title: string | null;
-  skillCategory: PossessionResult["skillCategory"];
-  difficulty: PossessionResult["difficulty"];
-  situation: string | null;
-  prompt: string | null;
-  answerChoices: { id: string; text: string }[];
-  bestReadChoiceId: string | null;
-  actualDecisionChoiceId: string | null;
-  actualDecision: string | null;
-  outcome: string | null;
-  coachingExplanation: string | null;
-  visibleEvidence: { timestampSeconds: number; observation: string }[];
-  basketballInferences: { statement: string; confidence: number }[];
-  coachPreferenceBasis: { questionId: string; influence: string }[];
-  involvement: string | null;
-  uncertainty: string[];
-  playerIdConfidence: number;
-  decisionConfidence: number;
-  teachingValue: number;
-  decisionTags: string[];
-  warnings: string[];
-};
 
 function reasoningModel(): string {
   return (process.env.OPENAI_REP_MODEL || DEFAULT_REP_MODEL).trim();
@@ -70,7 +31,6 @@ function windowFrameTimestamps(startSeconds: number, endSeconds: number): number
   const n = POSSESSION_FRAMES;
   const out: number[] = [];
   for (let i = 0; i < n; i += 1) {
-    // Slight centre bias: more resolution where the decision usually sits.
     const u = i / (n - 1);
     const biased = 0.5 + (u - 0.5) * (0.7 + 0.6 * Math.abs(u - 0.5) * 2);
     const t = startSeconds + Math.min(1, Math.max(0, biased)) * (endSeconds - startSeconds);
@@ -79,10 +39,29 @@ function windowFrameTimestamps(startSeconds: number, endSeconds: number): number
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
+const BROAD_TAGS: DecisionTag[] = [
+  "drive-help",
+  "closeout",
+  "help-defense",
+  "on-ball-defense",
+  "ball-screen-defense",
+  "switching",
+  "transition-offense",
+  "transition-defense",
+  "shot-selection",
+  "late-clock",
+  "spacing",
+  "paint-touch",
+  "offensive-rebound",
+  "defensive-rebound",
+  "pace",
+];
+
 /**
- * Stage C+D+E for one possession window. Retrieves frames, runs the reasoning
- * model with the coach's applicable preferences, validates, and returns a
- * candidate, a rejection, or a low-confidence flag.
+ * Analyse one possession window. Retrieves temporal frames, runs the reasoning
+ * model against the strict decision definition, then applies the deterministic
+ * {@link evaluatePossessionResult} gate. The model is free to return
+ * `decision: false` — most windows should.
  */
 export async function analyzePossession(
   playbackId: string,
@@ -106,27 +85,7 @@ export async function analyzePossession(
     return { kind: "rejected", reason: "frames-unavailable", detail: `only ${frames.length} frames`, usage: emptyUsage, model };
   }
 
-  // A broad pref set: every preference whose decision tags could plausibly apply
-  // to any read. The model is told to use only the ones the *visible* situation
-  // warrants and to report which it used.
-  const broadTags: DecisionTag[] = [
-    "drive-help",
-    "closeout",
-    "help-defense",
-    "on-ball-defense",
-    "ball-screen-defense",
-    "switching",
-    "transition-offense",
-    "transition-defense",
-    "shot-selection",
-    "late-clock",
-    "spacing",
-    "paint-touch",
-    "offensive-rebound",
-    "defensive-rebound",
-    "pace",
-  ];
-  const prefs = relevantPreferences(profile, broadTags).map((p) => ({
+  const prefs = relevantPreferences(profile, BROAD_TAGS).map((p) => ({
     questionId: p.questionId,
     prompt: p.prompt,
     label: p.label,
@@ -159,7 +118,7 @@ export async function analyzePossession(
       model,
       instructions: prompt.system,
       input: [{ role: "user", content }],
-      max_output_tokens: 4_000,
+      max_output_tokens: 4_500,
       text: {
         format: {
           type: "json_schema",
@@ -173,10 +132,7 @@ export async function analyzePossession(
     throw toAiError(cause);
   }
 
-  const usage: Usage = {
-    input: response.usage?.input_tokens ?? 0,
-    output: response.usage?.output_tokens ?? 0,
-  };
+  const usage: Usage = { input: response.usage?.input_tokens ?? 0, output: response.usage?.output_tokens ?? 0 };
   const text = response.output_text?.trim();
   if (!text) return { kind: "rejected", reason: "invalid-output", detail: "empty", usage, model };
 
@@ -189,137 +145,26 @@ export async function analyzePossession(
 
   const parsed = possessionResultSchema.safeParse(raw);
   if (!parsed.success) {
-    return {
-      kind: "rejected",
-      reason: "invalid-output",
-      detail: parsed.error.issues[0]?.message ?? "schema",
-      usage,
-      model,
-    };
-  }
-  const r = parsed.data;
-
-  if (!r.targetVisible) {
-    return { kind: "rejected", reason: "target-not-visible", detail: r.involvement ?? "", usage, model };
-  }
-  if (r.targetIdentificationConfidence < CANDIDATE_ID_CONFIDENCE_MIN) {
-    return {
-      kind: "rejected",
-      reason: "low-identification",
-      detail: `id ${r.targetIdentificationConfidence.toFixed(2)}`,
-      usage,
-      model,
-    };
-  }
-  if (!r.hasDecision || r.decisionOffsetSeconds === null) {
-    return { kind: "rejected", reason: "no-decision", detail: r.involvement ?? "", usage, model };
-  }
-  // The pause must sit far enough into the analysed window that the model
-  // actually observed the setup — a pause on the first frames has no context.
-  if (r.decisionOffsetSeconds < MIN_PRE_DECISION_SECONDS) {
-    return {
-      kind: "rejected",
-      reason: "insufficient-pre-decision-context",
-      detail: `offset ${r.decisionOffsetSeconds.toFixed(1)}s`,
-      usage,
-      model,
-    };
+    return { kind: "rejected", reason: "invalid-output", detail: parsed.error.issues[0]?.message ?? "schema", usage, model };
   }
 
-  // --- turn the window-relative offset into absolute clip timing, verified ---
-  const decisionSeconds = round(window.startSeconds + r.decisionOffsetSeconds);
-  // Expand backward into the source video for 3-5 s of lead when it is safe
-  // (i.e. not before the start of the film).
-  const clipStartSeconds = round(Math.max(0, decisionSeconds - PREFERRED_PRE_DECISION_SECONDS));
-  const clipEndSeconds = round(Math.min(window.endSeconds, decisionSeconds + 6));
-  const preContext = decisionSeconds - clipStartSeconds;
-  if (!(clipStartSeconds < decisionSeconds && decisionSeconds < clipEndSeconds && clipEndSeconds - clipStartSeconds >= 5)) {
-    return { kind: "rejected", reason: "bad-timing", detail: `d=${decisionSeconds}`, usage, model };
-  }
-  if (preContext < MIN_PRE_DECISION_SECONDS) {
-    return {
-      kind: "rejected",
-      reason: "insufficient-pre-decision-context",
-      detail: `only ${preContext.toFixed(1)}s before the pause`,
-      usage,
-      model,
-    };
-  }
-  if (clipEndSeconds - decisionSeconds < MIN_POST_DECISION_SECONDS) {
-    return { kind: "rejected", reason: "no-outcome-room", detail: "", usage, model };
-  }
+  const gate = evaluatePossessionResult(parsed.data, window);
+  const analyzed: AnalyzedPossession =
+    gate.kind === "rejected"
+      ? { ...gate, usage, model }
+      : gate.kind === "flagged"
+        ? { kind: "flagged", draft: gate.draft, reason: gate.reason, usage, model }
+        : { kind: "candidate", draft: gate.draft, usage, model };
 
-  // --- evidence must sit inside the window; drop strays, fail if too many ---
-  const lo = window.startSeconds - 1;
-  const hi = window.endSeconds + 1;
-  const keptEvidence = r.visibleEvidence
-    .filter((e) => e.timestampSeconds >= lo && e.timestampSeconds <= hi)
-    .map((e) => ({ ...e, timestampSeconds: round(clamp(e.timestampSeconds, window.startSeconds, window.endSeconds)) }))
-    .sort((a, b) => a.timestampSeconds - b.timestampSeconds);
-  if (keptEvidence.length < 2) {
-    return { kind: "rejected", reason: "weak-evidence", detail: `${keptEvidence.length} in-window`, usage, model };
-  }
-
-  // Model returns an ordered list of choice TEXT; ids are assigned here (A, B, …).
-  const choiceTexts = r.answerChoices.map((c) => c.text.trim()).filter(Boolean);
-  const uniqueText = new Set(choiceTexts.map((t) => t.toLowerCase()));
-  if (
-    choiceTexts.length < 2 ||
-    uniqueText.size !== choiceTexts.length ||
-    r.bestReadIndex === null ||
-    r.bestReadIndex >= choiceTexts.length
-  ) {
-    return { kind: "rejected", reason: "bad-choices", detail: `${choiceTexts.length} choices`, usage, model };
-  }
-  const choices = choiceTexts.map((text, i) => ({ id: CHOICE_LETTERS[i], text }));
-  const bestReadChoiceId = CHOICE_LETTERS[r.bestReadIndex];
-  const actualDecisionChoiceId =
-    r.actualDecisionIndex !== null && r.actualDecisionIndex < choiceTexts.length
-      ? CHOICE_LETTERS[r.actualDecisionIndex]
-      : null;
-
-  if (!r.title || !r.situation || !r.prompt || !r.outcome || !r.coachingExplanation) {
-    return { kind: "rejected", reason: "incomplete-draft", detail: "", usage, model };
-  }
-
-  const draft: CandidateDraft = {
-    clipStartSeconds,
-    decisionSeconds,
-    clipEndSeconds,
-    title: r.title,
-    skillCategory: r.skillCategory,
-    difficulty: r.difficulty,
-    situation: r.situation,
-    prompt: r.prompt,
-    answerChoices: choices,
-    bestReadChoiceId,
-    actualDecisionChoiceId,
-    actualDecision: r.actualDecision,
-    outcome: r.outcome,
-    coachingExplanation: r.coachingExplanation,
-    visibleEvidence: keptEvidence,
-    basketballInferences: r.basketballInferences,
-    coachPreferenceBasis: r.coachPreferenceBasis,
-    involvement: r.involvement,
-    uncertainty: r.uncertainty,
-    playerIdConfidence: r.targetIdentificationConfidence,
-    decisionConfidence: r.decisionConfidence,
-    teachingValue: r.teachingValue,
-    decisionTags: r.decisionTags,
-    warnings: r.warnings,
-  };
-
-  if (r.decisionConfidence < CANDIDATE_DECISION_CONFIDENCE_MIN) {
-    return { kind: "flagged", draft, reason: `low decision confidence ${r.decisionConfidence.toFixed(2)}`, usage, model };
-  }
-  return { kind: "candidate", draft, usage, model };
+  onRaw?.({ raw: parsed.data, gate });
+  return analyzed;
 }
 
-function round(n: number): number {
-  return Math.round(n * 10) / 10;
-}
-function clamp(v: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, v));
+/** Optional hook so a debug/eval script can capture the raw model verdict + gate result. */
+type RawHook = (x: { raw: PossessionResult; gate: GateResult }) => void;
+let onRaw: RawHook | undefined;
+export function __setRawHook(fn: RawHook | undefined): void {
+  onRaw = fn;
 }
 
 export { CANDIDATE_PROMPT_VERSION };
