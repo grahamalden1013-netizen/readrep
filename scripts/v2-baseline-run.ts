@@ -261,7 +261,6 @@ async function main() {
     covered.add(idx);
     state.possessionIndex += 1;
     processedThisRun += 1;
-    state.wallMsAccrued += Date.now() - runStart - state.wallMsAccrued + state.wallMsAccrued; // noop; wall added below
     save(state);
     process.stdout.write(
       `  [${state.ledger.length}/${state.windows.length}] win ${idx} ${clock(win.startSeconds)}-${clock(win.endSeconds)}  ` +
@@ -276,7 +275,7 @@ async function main() {
     }
   }
 
-  state.wallMsAccrued += Date.now() - runStart;
+  state.wallMsAccrued = (state.wallMsAccrued || 0) + (Date.now() - runStart);
   save(state);
   report(state, processedThisRun, skipped);
 }

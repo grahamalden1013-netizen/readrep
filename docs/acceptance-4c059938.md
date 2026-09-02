@@ -212,6 +212,56 @@ The nine seeded rows are `status = rejected` with these reasons; the review page
 shows nothing to review and lists all nine as rejected with the v2 reason. The
 130-window game has **not** been re-run under v2.
 
+## Full-game game-analysis-v2 baseline (2026-09-02)
+
+One clean versioned run — **`pipelineVersion: game-analysis-v2` on every ledger
+entry**. Own resumable cursor (`scratchpad/v2-baseline-cursor.json`), **not** the
+v1 ledger. Exactly-once (127 unique window indices, `possessionIndex` monotonic).
+No threshold changes. `scripts/v2-baseline-run.ts`, hard $5 cost ceiling
+(not reached).
+
+| metric | value |
+| --- | --- |
+| total live-play windows | 127 (9 live spans, Stage A) |
+| total windows processed | **127 / 127** — status COMPLETE |
+| discovery decisions | **0** |
+| discovery no-decisions | **127** |
+| deterministic-gate passes / rejections | 0 / 127 |
+| verifier passes / failures / disagreements | 0 / 0 / 0 (never ran — nothing reached it) |
+| **FINAL accepted candidates** | **0** |
+| **needs_attention candidates** | **0** |
+| model calls | 152 (25 Stage A + 127 discovery + 0 verifier) |
+| retries | 2 |
+| tokens | 1,651,519 in / 120,429 out |
+| total estimated cost | **$3.18** (ceiling $5) |
+| wall time | ~3 h elapsed across restarts + host sleep; ~55 min of model time |
+
+**Rejection-reason distribution — every window rejected at the discovery stage
+(the model itself returned `decision: false`):**
+
+| n | stage · reason |
+| --- | --- |
+| 54 | discovery · no-meaningful-decision |
+| 29 | discovery · target-not-confidently-identified |
+| 17 | discovery · target-not-materially-involved |
+| 14 | discovery · target-not-visible |
+| 4 | discovery · target-not-confidently-tracked |
+| 3 | discovery · no-clear-target-commitment |
+| 6 | discovery · other (no-committed-action, dead-ball-in-window, tracking variants) |
+
+**Zero candidates survived. Reported honestly — the system was not tuned.**
+No window in the 40-minute game contained a decision the model would assert
+that also survived grounding + verification, with these scout-derived
+reference frames.
+
+All nine negative regression fixtures still fail (`test/v2-negative-regression.test.ts`
++ `test/decision-gate-regression.test.ts`, 13 tests, green).
+
+The v2 result is persisted as job `a0000000-…-0000000e7a20`
+(`prompt_version = game-analysis-v2`, `status = completed`, `candidate_count = 0`,
+`rejected_count = 127`). It is the latest analysis for the game, so the review
+page shows the v2 baseline: nothing to review, 0 approved.
+
 ## Baseline conclusions (do not "fix" before this is agreed)
 
 - Coverage, resumability, exactly-once, terminal-state accounting, and the
